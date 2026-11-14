@@ -71,6 +71,8 @@ def main():
         docker("stop", "--time", "10", name)
         assert docker("inspect", "--format", "{{.State.ExitCode}}", name) == "0", "Server did not shut down cleanly"
         docker("start", name)
+        port = docker("port", name, "8080/tcp").split(":")[-1]
+        base = "http://127.0.0.1:" + port
         wait_ready()
         assert request("/api/me")["id"] == guest["id"], "Session was not persisted"
         assert any(item["id"] == word["id"] for item in request("/api/favorites")), "SQLite write was not persisted"

@@ -71,7 +71,7 @@ jobs:
               echo "Refusing to overwrite existing image: $IMAGE:$tag" >&2
               exit 1
             fi
-            if ! grep -Eqi 'manifest unknown|no such manifest|manifest_unknown' registry-error.txt; then
+            if ! grep -Eqi 'manifest unknown|no such manifest|manifest_unknown|name unknown|name_unknown' registry-error.txt; then
               cat registry-error.txt >&2
               exit 1
             fi
