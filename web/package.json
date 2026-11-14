@@ -52,5 +52,8 @@
   },
   "overrides": {
     "figlet": "1.11.3"
+  },
+  "allowScripts": {
+    "@heroui-pro/react@1.0.0-beta.11": true
   }
 }
