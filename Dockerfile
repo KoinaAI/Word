@@ -15,7 +15,7 @@ RUN --mount=type=secret,id=heroui_pro_archive --mount=type=secret,id=heroui_auth
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS backend
+FROM golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS backend
 WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
