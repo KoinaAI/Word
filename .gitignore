@@ -12,3 +12,5 @@ data/
 artifacts/
 .DS_Store
 word-server
+
+*.tsbuildinfo

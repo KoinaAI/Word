@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 /** Uses the browser's installed English voices; no third-party audio request. */
-export function pronounce(text: string, accent = 'en-US') {
+export function pronounce(text: string, accent = localStorage.getItem('word-accent') || 'en-US') {
   if (!('speechSynthesis' in window)) { toast.error('当前浏览器不支持发音，请换用 Chrome、Edge 或 Safari。'); return }
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text)

@@ -82,6 +82,10 @@ function StudySession({ initialStudy, mode, exit, reload }: { initialStudy: Stud
     }
   }, [])
 
+  useEffect(() => {
+    if (word && localStorage.getItem('word-auto-audio') === 'true') pronounce(word.text)
+  }, [word?.id])
+
   // Keep the lock through the outgoing animation; the next card unlocks only after it is visible.
   useLayoutEffect(() => {
     displayedWordId.current = word?.id

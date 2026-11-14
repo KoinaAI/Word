@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { api, json, useUser } from '@/lib/api'
 import { pronounce } from '@/lib/speech'
 import type { User } from '@/lib/types'
-import { PageHeading } from '@/components/shared'
+import { Failure, Loading, PageHeading } from '@/components/shared'
 
 export function SettingsPage() {
   const { data: user } = useUser()
@@ -39,9 +39,11 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const navigate = useNavigate()
   const client = useQueryClient()
-  const { data: current } = useUser()
+  const currentQuery = useUser()
+  const current = currentQuery.data
   const submit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!current || currentQuery.isPending) return
     const form = new FormData(event.currentTarget)
     setPending(true); setError('')
     try {
@@ -51,5 +53,7 @@ export function LoginPage() {
       navigate(result.role === 'admin' ? '/admin' : '/')
     } catch (e) { setError((e as Error).message) } finally { setPending(false) }
   }
+  if (currentQuery.isPending) return <Loading label="正在准备账号会话" />
+  if (currentQuery.error || !current) return <Failure error={currentQuery.error} retry={currentQuery.refetch} />
   return <main className="auth-page"><section className="auth-story"><a href="/" onClick={event => { event.preventDefault(); navigate('/') }} className="brand"><img src="/favicon.svg" alt="" /><span>就背单词</span></a><div><p className="eyebrow">记住单词，也记住每天的进步</p><h1>一个词，<br />一个更大的世界。</h1><p>每天的一点点，终会成为你向前的底气。</p><div className="auth-feature"><BookOpen /><span>精选词书</span><span>·</span><Gear /><span>科学复习</span><span>·</span><Check /><span>临考速刷</span></div></div><span className="text-xs text-muted">Little by little, a little becomes a lot.</span></section><section className="auth-form-area"><div className="auth-form"><Chip color="success" variant="soft" className="mb-5 w-fit">{register ? '新的旅程，从这里开始' : '很高兴，再次见到你'}</Chip><h2>{register ? '为进步，留一个位置' : '欢迎回到学习空间'}</h2><p>{register ? '创建账号，跨设备继续你的学习。' : '登录账号，接着上次的脚步往前走。'}</p><form onSubmit={submit} className="space-y-5 mt-7">{register && <TextField isRequired><Label>昵称</Label><Input name="name" autoComplete="nickname" placeholder="怎么称呼你" maxLength={60} /></TextField>}<TextField isRequired><Label>邮箱</Label><Input name="email" type="email" autoComplete="email" placeholder="you@example.com" /></TextField><TextField isRequired><Label>密码</Label><Input name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={register ? 8 : 1} maxLength={72} placeholder={register ? '至少 8 位字符' : '输入你的密码'} /></TextField>{error && <p className="text-sm text-danger" role="alert">{error}</p>}<Button fullWidth type="submit" isPending={pending}>{register ? '创建账号' : '登录'}<ArrowRight /></Button></form><div className="auth-toggle"><span>{register ? '已有账号？' : '还没有账号？'}</span><Button size="sm" variant="ghost" onPress={() => { setRegister(!register); setError('') }}>{register ? '去登录' : '免费注册'}</Button></div>{current?.guest && register && <p className="text-xs text-muted flex gap-2 leading-6"><ShieldCheck className="shrink-0 mt-1" />注册将保留你当前访客账号的学习进度。</p>}<Button fullWidth variant="ghost" className="mt-4" onPress={() => navigate('/')}>先以访客身份学习</Button></div></section></main>
 }
