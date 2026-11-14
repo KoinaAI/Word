@@ -191,6 +191,9 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) error {
 	if err := decode(w, r, &input); err != nil {
 		return err
 	}
+	if len(input.Password) > 72 {
+		return problem(http.StatusUnauthorized, "invalid email or password")
+	}
 	email, _ := normalizeEmail(input.Email)
 	var id int64
 	var hash string

@@ -57,6 +57,9 @@ func (a *App) stats(w http.ResponseWriter, r *http.Request, u User) error {
 	if err != nil {
 		return err
 	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
 	return jsonResponse(w, http.StatusOK, stats)
 }
 

@@ -97,6 +97,11 @@ func TestAuthLifecycleAndIsolation(t *testing.T) {
 	loginCookie := w.Result().Cookies()[0]
 	expectStatus(t, request(t, a, "POST", "/api/auth/logout", "{}", loginCookie, ""), 200)
 	expectStatus(t, request(t, a, "GET", "/api/me", "", loginCookie, ""), 401)
+	// bcrypt compares only 72 bytes; reject longer inputs rather than accepting an appended suffix.
+	longPassword := strings.Repeat("a", 72)
+	expectStatus(t, request(t, a, "POST", "/api/auth/register", `{"name":"Long","email":"long@example.com","password":"`+longPassword+`"}`, otherCookie, ""), 200)
+	expectStatus(t, request(t, a, "POST", "/api/auth/login", `{"email":"long@example.com","password":"`+longPassword+`x"}`, nil, ""), 401)
+	expectStatus(t, request(t, a, "POST", "/api/auth/login", `{"email":"long@example.com","password":"`+longPassword+`"}`, nil, ""), 200)
 	a.now = func() time.Time { return time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC) }
 	expectStatus(t, request(t, a, "GET", "/api/me", "", registeredCookie, ""), 401)
 }

@@ -57,11 +57,6 @@ CREATE TABLE IF NOT EXISTS navigation (
  id INTEGER PRIMARY KEY, label TEXT NOT NULL, path TEXT NOT NULL UNIQUE, icon TEXT NOT NULL,
  enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), sort_order INTEGER NOT NULL
 );
-INSERT OR IGNORE INTO navigation VALUES
- (1,'概览','/admin','LayoutDashboard',1,0),
- (2,'词书管理','/admin/books','BookOpen',1,1),
- (3,'用户管理','/admin/users','Users',1,2),
- (4,'导航管理','/admin/navigation','Navigation',1,3);
 `
 
 func openStore(ctx context.Context, c Config, now time.Time) (*sql.DB, error) {
@@ -71,6 +66,18 @@ func openStore(ctx context.Context, c Config, now time.Time) (*sql.DB, error) {
 	}
 	if err = os.MkdirAll(filepath.Dir(absolute), 0700); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
+	}
+	file, err := os.OpenFile(absolute, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	err = file.Chmod(0600)
+	closeErr := file.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	u := url.URL{Scheme: "file", Path: absolute}
 	q := u.Query()
@@ -104,6 +111,15 @@ func initialize(ctx context.Context, db *sql.DB, c Config, now time.Time) error 
 	defer tx.Rollback()
 	if _, err = tx.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize schema: %w", err)
+	}
+	// Defaults are a one-time migration; user-edited navigation must survive restarts.
+	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO navigation(id,label,path,icon,enabled,sort_order)
+ SELECT 1,'概览','/admin','LayoutDashboard',1,0 WHERE NOT EXISTS(SELECT 1 FROM metadata WHERE key='navigation_v1')
+ UNION ALL SELECT 2,'词书管理','/admin/books','BookOpen',1,1 WHERE NOT EXISTS(SELECT 1 FROM metadata WHERE key='navigation_v1')
+ UNION ALL SELECT 3,'用户管理','/admin/users','Users',1,2 WHERE NOT EXISTS(SELECT 1 FROM metadata WHERE key='navigation_v1')
+ UNION ALL SELECT 4,'导航管理','/admin/navigation','Navigation',1,3 WHERE NOT EXISTS(SELECT 1 FROM metadata WHERE key='navigation_v1');
+ INSERT OR IGNORE INTO metadata(key,value) VALUES('navigation_v1','1');`); err != nil {
+		return err
 	}
 	var admins int
 	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE role='admin'").Scan(&admins); err != nil {

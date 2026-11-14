@@ -94,6 +94,9 @@ func (a *App) bookDetail(w http.ResponseWriter, r *http.Request, u User) error {
 	if err != nil {
 		return err
 	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
 	return jsonResponse(w, http.StatusOK, struct {
 		Book  Book   `json:"book"`
 		Words []Word `json:"words"`
@@ -167,6 +170,9 @@ func (a *App) study(w http.ResponseWriter, r *http.Request, u User) error {
 	}
 	words, err := readWords(r.Context(), tx, u.ID, where, args...)
 	if err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 	return jsonResponse(w, http.StatusOK, struct {

@@ -138,6 +138,19 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/favorites", a.require(false, a.favorites))
 	mux.HandleFunc("POST /api/favorites/{id}", a.require(false, a.setFavorite))
 	mux.HandleFunc("GET /api/stats", a.require(false, a.stats))
+	mux.HandleFunc("GET /api/admin/stats", a.require(true, a.adminStats))
+	mux.HandleFunc("GET /api/admin/books", a.require(true, a.adminBooks))
+	mux.HandleFunc("POST /api/admin/books", a.require(true, a.createBook))
+	mux.HandleFunc("PATCH /api/admin/books/{id}", a.require(true, a.patchBook))
+	mux.HandleFunc("DELETE /api/admin/books/{id}", a.require(true, a.deleteBook))
+	mux.HandleFunc("POST /api/admin/books/{id}/words", a.require(true, a.importWords))
+	mux.HandleFunc("DELETE /api/admin/words/{id}", a.require(true, a.deleteWord))
+	mux.HandleFunc("GET /api/admin/users", a.require(true, a.adminUsers))
+	mux.HandleFunc("GET /api/admin/navigation", a.require(true, a.navigation))
+	mux.HandleFunc("PUT /api/admin/navigation", a.require(true, a.putNavigation))
+	mux.HandleFunc("/api", a.wrap(func(w http.ResponseWriter, r *http.Request) error {
+		return problem(http.StatusNotFound, "API route not found")
+	}))
 	mux.HandleFunc("/api/", a.wrap(func(w http.ResponseWriter, r *http.Request) error {
 		// Keep errors JSON even when a known endpoint receives an unsupported method.
 		for _, method := range []string{"GET", "POST", "PATCH", "PUT", "DELETE"} {
