@@ -2,7 +2,7 @@
 
 一个以临考速刷和间隔复习为核心的单词学习网站。React / Node.js 工具链 + Go API + SQLite。
 
-前端使用 HeroUI v3、HeroUI Pro、Tailwind CSS v4 与 shadcn 风格的辅助控件。Go 同时提供 API 和构建后的网页，部署时只需要一个容器。
+前端使用 HeroUI v3、HeroUI Pro、Tailwind CSS v4 与 shadcn Command / Dialog 辅助控件。Go 同时提供 API 和构建后的网页，部署时只需要一个容器。
 
 ## 功能
 
@@ -13,6 +13,8 @@
 - 管理后台：真实站点统计、词书与词条管理、JSON 批量导入、用户列表、可保存的导航顺序/名称/显示配置。
 
 内置词书是少量原创双语例句的**精选样本**，不是完整考试大纲词库。可通过后台导入自己的完整词库。每日统计以 UTC 日期计数。发音使用浏览器提供的语音能力，音色及可用性取决于设备。
+
+最新发布：[v0.1.0 交付记录](docs/releases/v0.1.0.md)，包含镜像 digest、验证范围和流水线状态。
 
 ## Docker Compose
 
