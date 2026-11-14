@@ -191,6 +191,13 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/auth/logout", a.logout)
 	a.mux.HandleFunc("GET /api/me", a.auth(a.me, false))
 	a.mux.HandleFunc("PATCH /api/me", a.auth(a.updateMe, false))
+	a.mux.HandleFunc("GET /api/books", a.books)
+	a.mux.HandleFunc("GET /api/books/{id}", a.bookDetail)
+	a.mux.HandleFunc("GET /api/study", a.auth(a.study, false))
+	a.mux.HandleFunc("POST /api/study/answer", a.auth(a.answer, false))
+	a.mux.HandleFunc("GET /api/stats", a.auth(a.stats, false))
+	a.mux.HandleFunc("GET /api/favorites", a.auth(a.favorites, false))
+	a.mux.HandleFunc("POST /api/favorites/{id}", a.auth(a.favorite, false))
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "接口不存在") })
 	a.mux.HandleFunc("/", a.spa)
 }
