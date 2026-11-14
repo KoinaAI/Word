@@ -682,7 +682,7 @@ export function AdminBookWords() {
             label={`编辑 ${w.text}`}
             icon="pencil"
             onPress={() => {
-              setForm(w);
+              setForm({ text: w.text, phonetic: w.phonetic, meaning: w.meaning, example: w.example, exampleMeaning: w.exampleMeaning });
               setEditing(true);
             }}
           />

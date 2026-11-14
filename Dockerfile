@@ -22,7 +22,7 @@ RUN go mod download
 COPY backend/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /word ./cmd/server
 
-FROM alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd4121 AS runtime
+FROM alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412 AS runtime
 RUN addgroup -g 10001 word && adduser -D -u 10001 -G word word && \
     mkdir -p /app/data && chown -R word:word /app
 WORKDIR /app

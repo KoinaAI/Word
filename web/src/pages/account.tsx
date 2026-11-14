@@ -23,7 +23,7 @@ export function Login() {
     try {
       const user = await send<User>(
         register ? "/auth/register" : "/auth/login",
-        { name, email, password },
+        register ? { name, email, password } : { email, password },
       );
       queryClient.clear();
       queryClient.setQueryData(["me"], user);
