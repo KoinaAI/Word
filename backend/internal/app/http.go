@@ -131,6 +131,13 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", a.wrap(a.logout))
 	mux.HandleFunc("GET /api/me", a.require(false, a.me))
 	mux.HandleFunc("PATCH /api/me", a.require(false, a.patchMe))
+	mux.HandleFunc("GET /api/books", a.require(false, a.books))
+	mux.HandleFunc("GET /api/books/{id}", a.require(false, a.bookDetail))
+	mux.HandleFunc("GET /api/study", a.require(false, a.study))
+	mux.HandleFunc("POST /api/study/answer", a.require(false, a.answer))
+	mux.HandleFunc("GET /api/favorites", a.require(false, a.favorites))
+	mux.HandleFunc("POST /api/favorites/{id}", a.require(false, a.setFavorite))
+	mux.HandleFunc("GET /api/stats", a.require(false, a.stats))
 	mux.HandleFunc("/api/", a.wrap(func(w http.ResponseWriter, r *http.Request) error {
 		// Keep errors JSON even when a known endpoint receives an unsupported method.
 		for _, method := range []string{"GET", "POST", "PATCH", "PUT", "DELETE"} {

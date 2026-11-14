@@ -125,6 +125,9 @@ func initialize(ctx context.Context, db *sql.DB, c Config, now time.Time) error 
 			return fmt.Errorf("initialize administrator: %w", err)
 		}
 	}
+	if err = seedCatalog(ctx, tx); err != nil {
+		return fmt.Errorf("seed curated books: %w", err)
+	}
 	return tx.Commit()
 }
 
