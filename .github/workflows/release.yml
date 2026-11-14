@@ -1,0 +1,96 @@
+name: Validate and publish version
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && github.event.created
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/koinaai/word
+      VERSION: ${{ github.ref_name }}
+      REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release candidate and licensed build access
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          if not re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?', os.environ['VERSION']):
+              raise SystemExit('Release tag must be an immutable SemVer tag, e.g. v1.0.0')
+          if not os.environ.get('HEROUI_AUTH_TOKEN'):
+              raise SystemExit('HEROUI_AUTH_TOKEN is required for automated licensed source builds. No image was published. See README for local licensed builds.')
+          PY
+          git merge-base --is-ancestor "$REVISION" origin/main
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+      - name: Validate the complete backend for this version
+        working-directory: backend
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: Build the version image
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: >-
+          docker build --platform linux/amd64
+          --secret id=heroui_token,env=HEROUI_AUTH_TOKEN
+          --build-arg VCS_REF="$REVISION" --build-arg VERSION="$VERSION"
+          -t "$IMAGE:$VERSION" -t "$IMAGE:sha-$REVISION" .
+      - name: Validate the built image before publication
+        run: python3 scripts/smoke_container.py "$IMAGE:$VERSION"
+      - name: Sign in to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+      - name: Publish immutable tags without replacing existing images
+        run: |
+          for tag in "$VERSION" "sha-$REVISION"; do
+            if docker manifest inspect "$IMAGE:$tag" >/dev/null 2>registry-error.txt; then
+              echo "Refusing to overwrite existing image: $IMAGE:$tag" >&2
+              exit 1
+            fi
+            if ! grep -Eqi 'manifest unknown|no such manifest|manifest_unknown' registry-error.txt; then
+              cat registry-error.txt >&2
+              exit 1
+            fi
+          done
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:sha-$REVISION"
+      - name: Pull by digest and verify delivered image
+        run: |
+          digest=$(docker image inspect "$IMAGE:$VERSION" --format '{{index .RepoDigests 0}}')
+          test -n "$digest"
+          docker pull "$digest"
+          python3 scripts/smoke_container.py "$digest"
+          {
+            echo '### Published image'
+            echo "- Version: $IMAGE:$VERSION"
+            echo "- Commit: $REVISION"
+            echo "- Immutable image: $digest"
+            echo '- Verified platform: linux/amd64'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Sign out
+        if: always()
+        run: docker logout ghcr.io

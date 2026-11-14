@@ -1,0 +1,160 @@
+name: Scoped checks
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.paths.outputs.frontend }}
+      backend: ${{ steps.paths.outputs.backend }}
+      container: ${{ steps.paths.outputs.container }}
+      pro_available: ${{ steps.pro.outputs.available }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select affected components
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python3 scripts/ci_changes.py
+      - name: Check licensed build availability
+        id: pro
+        env:
+          HEROUI_AUTH_TOKEN: ${{ github.event_name == 'push' && secrets.HEROUI_AUTH_TOKEN || '' }}
+        run: |
+          if [ -n "$HEROUI_AUTH_TOKEN" ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::HEROUI_AUTH_TOKEN is unavailable. Licensed frontend/container builds will be skipped; this run does not verify them.'
+          fi
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' && needs.changes.outputs.pro_available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Install licensed dependencies
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+      - name: Check the changed application module
+        run: |
+          go test ./internal/app
+          go build ./cmd/server
+
+  container:
+    needs: changes
+    if: needs.changes.outputs.container == 'true' && needs.changes.outputs.pro_available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate Compose
+        env:
+          ADMIN_PASSWORD: ci-validation-only-password
+        run: docker compose config --quiet
+      - name: Build the container
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: docker build --secret id=heroui_token,env=HEROUI_AUTH_TOKEN -t word:check .
+      - name: Check container startup and persistence
+        run: python3 scripts/smoke_container.py word:check
+
+  results:
+    needs: [changes, frontend, backend, container]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Report checked and unavailable components
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
+          BACKEND_SELECTED: ${{ needs.changes.outputs.backend }}
+          CONTAINER_SELECTED: ${{ needs.changes.outputs.container }}
+          PRO_AVAILABLE: ${{ needs.changes.outputs.pro_available }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          CONTAINER_RESULT: ${{ needs.container.result }}
+        run: |
+          python3 - <<'PY'
+          import os
+          if os.environ['CHANGES'] != 'success':
+              raise SystemExit('Change selection did not succeed')
+          missing = []
+          failed = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('| Component | Result |\n|---|---|\n')
+              for name in ('frontend', 'backend', 'container'):
+                  selected = os.environ[name.upper() + '_SELECTED'] == 'true'
+                  result = os.environ[name.upper() + '_RESULT']
+                  expected_skip = not selected or (name != 'backend' and os.environ['PRO_AVAILABLE'] != 'true')
+                  if selected and expected_skip:
+                      missing.append(name)
+                      label = 'Not verified: licensed build token unavailable'
+                  elif not selected:
+                      label = 'Not affected'
+                  else:
+                      label = result
+                  summary.write(f'| {name} | {label} |\n')
+                  if (expected_skip and result != 'skipped') or (not expected_skip and result != 'success'):
+                      failed.append(name + ': ' + result)
+          if missing:
+              print('::warning::Not verified in CI: ' + ', '.join(missing) + '. Run a licensed local build before merging; configure HEROUI_AUTH_TOKEN to enable these jobs.')
+          if failed:
+              raise SystemExit('Unexpected check results: ' + ', '.join(failed))
+          PY
