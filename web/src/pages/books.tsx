@@ -1,0 +1,33 @@
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { Button, Card, Chip, Input } from '@heroui/react'
+import { Segment } from '@heroui-pro/react/segment'
+import { ListView } from '@heroui-pro/react/list-view'
+import { toast } from 'sonner'
+import { api, queryClient, send, speak, useBooks, useUser, type Book, type Word } from '../lib/api'
+import { BookCard, BookCover, Empty, ErrorState, I, IconButton, Loading, PageHeader, Progress } from '../components/shared'
+import { errorText } from '../lib/utils'
+
+export function Books({ sprint = false }: { sprint?: boolean }) {
+ const books=useBooks(); const [category,setCategory]=useState('全部'); const [search,setSearch]=useState(''); const navigate=useNavigate()
+ if (books.error) return <ErrorState error={books.error} retry={()=>void books.refetch()}/>
+ if (!books.data) return <Loading/>
+ const categories=['全部',...new Set(books.data.map(b=>b.category))];const filtered=books.data.filter(b=>(category==='全部'||b.category===category)&&`${b.title} ${b.subtitle}`.toLowerCase().includes(search.toLowerCase()))
+ return <><PageHeader eyebrow={sprint ? 'Exam sprint' : 'Your next chapter'} title={sprint ? '临考速刷，把时间留给不会的。' : '你的目标，从一本词书开始。'} description={sprint ? '选一本词书，逐词判断熟悉程度。犹豫过的词，会进入独立巩固列表。' : '按目标选书，按自己的节奏前进。精选词书可直接开始，后台也支持导入完整词库。'}/>{sprint && <div className="sprint-rules"><div><span>01</span><strong>会</strong><p>直接标记已学，进入下一词</p></div><div><span>02</span><strong>不确定</strong><p>先看释义，再决定会或不会</p></div><div><span>03</span><strong>不会</strong><p>保留待学，下次继续攻克</p></div></div>}<div className="library-toolbar"><div className="category-scroll"><Segment selectedKey={category} onSelectionChange={k=>setCategory(String(k))} aria-label="词书分类">{categories.map(c=><Segment.Item id={c} key={c}>{c}</Segment.Item>)}</Segment></div><div className="search-input"><I name="magnifier" className="text-muted size-4"/><Input aria-label="搜索词书" placeholder="搜索词书名称…" value={search} onChange={e=>setSearch(e.target.value)}/></div></div><div className="library-caption"><span>共 {filtered.length} 本词书</span><span>精选内容 · 原创双语例句</span></div>{filtered.length ? <div className="book-grid">{filtered.map((b,i)=>sprint ? <Card key={b.id} className="sprint-book-card"><Card.Content><BookCover book={b}/><h3 className="font-semibold mt-4">{b.title}</h3><p className="text-xs text-muted mt-2">{Math.max(0,b.wordCount-b.learnedCount)} 个待学 · {b.wordCount} 词</p></Card.Content><Card.Footer><Button fullWidth onPress={()=>navigate(`/study/${b.id}?mode=sprint`)}>开始速刷<I name="bolt" className="size-4"/></Button></Card.Footer></Card> : <BookCard key={b.id} book={b} index={i}/>)}</div> : <Empty title="没有找到这本词书" description="试试其他关键词或分类。"/>}</>
+}
+export function BookDetail() {
+ const {id}=useParams();const navigate=useNavigate();const {data:user}=useUser();const [search,setSearch]=useState('');const [saving,setSaving]=useState(false)
+ const data=useQuery({queryKey:['book',id],queryFn:()=>api<{book:Book;words:Word[]}>(`/books/${id}`)})
+ if(data.error)return <ErrorState error={data.error} retry={()=>void data.refetch()}/>
+ if(!data.data)return <Loading/>
+ const {book,words}=data.data;const filtered=words.filter(w=>`${w.text} ${w.meaning}`.toLowerCase().includes(search.toLowerCase()))
+ async function setActive(){setSaving(true);try{const u=await send('/me',{activeBookId:book.id},'PATCH');queryClient.setQueryData(['me'],u);toast.success('已设为当前词书')}catch(e){toast.error(errorText(e))}finally{setSaving(false)}}
+ return <><Button variant="ghost" size="sm" className="mb-5" onPress={()=>navigate('/books')}><I name="arrow-left" className="size-4"/>返回词书库</Button><div className="book-detail-hero"><BookCover book={book} large/><div><Chip size="sm" variant="soft" color="accent">{book.category}</Chip><h1 className="text-3xl font-semibold mt-4 mb-3">{book.title}</h1><p className="text-muted max-w-lg leading-7">{book.description}</p><p className="text-sm text-muted mt-3 tabular-nums">{book.wordCount} 词 · 已学 {book.learnedCount} 词 · 到期复习 {book.dueCount} 词</p><div className="flex gap-3 flex-wrap mt-6"><Button onPress={()=>navigate(`/study/${book.id}?mode=learn`)}>开始学习<I name="arrow-right" className="size-4"/></Button><Button variant="secondary" onPress={()=>navigate(`/study/${book.id}?mode=sprint`)}><I name="bolt" className="size-4"/>临考速刷</Button><Button variant="outline" isPending={saving} isDisabled={user?.activeBookId===book.id} onPress={setActive}>{user?.activeBookId===book.id?'当前词书':'设为当前词书'}</Button></div><div className="mt-6 max-w-md"><Progress value={book.wordCount?book.learnedCount/book.wordCount*100:0} label="词书学习进度"/></div></div></div><div className="section-heading"><h2>词书预览 <span className="text-muted text-sm font-normal ml-2">{filtered.length} 词</span></h2><Input className="max-w-64" aria-label="搜索单词" placeholder="搜索单词或释义" value={search} onChange={e=>setSearch(e.target.value)}/></div><WordList words={filtered}/></>
+}
+export function WordList({words}:{words:Word[]}) {
+ async function favorite(word:Word){try{await send(`/favorites/${word.id}`,{favorite:!word.favorite});await Promise.all(['book','favorites','stats'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));toast.success(word.favorite?'已取消收藏':'已加入收藏')}catch(e){toast.error(errorText(e))}}
+ if(!words.length)return <Empty title="这里暂时还没有单词" description="调整搜索条件，或从词书中收藏想反复学习的词。"/>
+ return <ListView aria-label="单词列表" selectionMode="none" className="word-list" items={words}>{word=><ListView.Item id={word.id} textValue={word.text}><ListView.ItemContent><div className="word-row-content"><div className="word-row-main"><ListView.Title>{word.text}<span className="phonetic ml-3">{word.phonetic}</span></ListView.Title><ListView.Description>{word.meaning}</ListView.Description></div><div className="flex items-center gap-2">{word.reinforce&&<Chip size="sm" variant="soft" color="warning">待巩固</Chip>}{word.status==='mastered'&&<Chip size="sm" variant="soft" color="success">已学</Chip>}<IconButton label={`朗读 ${word.text}`} icon="volume-high" onPress={()=>{if(!speak(word.text))toast.error('当前浏览器不支持语音朗读')}}/><IconButton label={word.favorite?'取消收藏':'收藏单词'} icon={word.favorite?'bookmark-fill':'bookmark'} active={word.favorite} onPress={()=>void favorite(word)}/></div></div></ListView.ItemContent></ListView.Item>}</ListView>
+}
+export function Favorites(){const data=useQuery({queryKey:['favorites'],queryFn:()=>api<Word[]>('/favorites')});return <><PageHeader eyebrow="Keep the words you love" title="我的收藏" description="那些让你停留的词，值得再见一面。"/>{data.error?<ErrorState error={data.error}/>:!data.data?<Loading/>:<WordList words={data.data}/>}</>}
