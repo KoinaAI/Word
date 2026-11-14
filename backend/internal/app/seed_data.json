@@ -1,0 +1,896 @@
+[
+  {
+    "title": "四级核心词精选",
+    "subtitle": "从高频表达开始",
+    "description": "20 个适合四级入门的实用词汇，配原创双语例句。精选学习样本，非完整考试词表。",
+    "category": "四级",
+    "color": "#3B7665",
+    "words": [
+      {
+        "text": "achieve",
+        "phonetic": "/əˈtʃiːv/",
+        "meaning": "v. 达成；实现",
+        "example": "Small daily steps help us achieve our goals.",
+        "exampleMeaning": "每天迈出一小步，能帮助我们实现目标。"
+      },
+      {
+        "text": "affordable",
+        "phonetic": "/əˈfɔːdəbəl/",
+        "meaning": "adj. 价格可负担的",
+        "example": "The new café offers affordable lunches for students.",
+        "exampleMeaning": "这家新咖啡馆为学生提供价格实惠的午餐。"
+      },
+      {
+        "text": "attend",
+        "phonetic": "/əˈtend/",
+        "meaning": "v. 出席；参加",
+        "example": "I will attend the workshop after class.",
+        "exampleMeaning": "下课后我会参加这个工作坊。"
+      },
+      {
+        "text": "benefit",
+        "phonetic": "/ˈbenɪfɪt/",
+        "meaning": "n. 益处；v. 使受益",
+        "example": "Regular reading has a lasting benefit.",
+        "exampleMeaning": "经常阅读有长远的益处。"
+      },
+      {
+        "text": "compare",
+        "phonetic": "/kəmˈpeə/",
+        "meaning": "v. 比较",
+        "example": "Compare the two plans before you decide.",
+        "exampleMeaning": "做决定前，先比较这两个方案。"
+      },
+      {
+        "text": "consider",
+        "phonetic": "/kənˈsɪdə/",
+        "meaning": "v. 考虑；认为",
+        "example": "Please consider how much time you need.",
+        "exampleMeaning": "请考虑一下你需要多少时间。"
+      },
+      {
+        "text": "develop",
+        "phonetic": "/dɪˈveləp/",
+        "meaning": "v. 发展；培养",
+        "example": "Team projects help students develop communication skills.",
+        "exampleMeaning": "团队项目帮助学生培养沟通能力。"
+      },
+      {
+        "text": "effort",
+        "phonetic": "/ˈefət/",
+        "meaning": "n. 努力；精力",
+        "example": "Your steady effort is making a difference.",
+        "exampleMeaning": "你持续的努力正在带来改变。"
+      },
+      {
+        "text": "encourage",
+        "phonetic": "/ɪnˈkʌrɪdʒ/",
+        "meaning": "v. 鼓励；促进",
+        "example": "Our teacher encourages us to ask questions.",
+        "exampleMeaning": "老师鼓励我们提问。"
+      },
+      {
+        "text": "improve",
+        "phonetic": "/ɪmˈpruːv/",
+        "meaning": "v. 改善；提高",
+        "example": "Short practice sessions can improve your pronunciation.",
+        "exampleMeaning": "短时练习可以改善你的发音。"
+      },
+      {
+        "text": "increase",
+        "phonetic": "/ɪnˈkriːs/",
+        "meaning": "v. 增加；增长",
+        "example": "The library will increase its evening opening hours.",
+        "exampleMeaning": "图书馆将延长晚间开放时间。"
+      },
+      {
+        "text": "opportunity",
+        "phonetic": "/ˌɒpəˈtjuːnəti/",
+        "meaning": "n. 机会",
+        "example": "The exchange program gave me an opportunity to travel.",
+        "exampleMeaning": "交换项目给了我旅行的机会。"
+      },
+      {
+        "text": "prepare",
+        "phonetic": "/prɪˈpeə/",
+        "meaning": "v. 准备",
+        "example": "We prepare our notes before each discussion.",
+        "exampleMeaning": "每次讨论前，我们都会准备笔记。"
+      },
+      {
+        "text": "prevent",
+        "phonetic": "/prɪˈvent/",
+        "meaning": "v. 阻止；预防",
+        "example": "A simple reminder can prevent this mistake.",
+        "exampleMeaning": "一个简单的提醒就能避免这个错误。"
+      },
+      {
+        "text": "provide",
+        "phonetic": "/prəˈvaɪd/",
+        "meaning": "v. 提供",
+        "example": "The station provides free drinking water.",
+        "exampleMeaning": "车站提供免费饮用水。"
+      },
+      {
+        "text": "reduce",
+        "phonetic": "/rɪˈdjuːs/",
+        "meaning": "v. 减少；降低",
+        "example": "Walking to school helps reduce traffic.",
+        "exampleMeaning": "步行上学有助于减少交通流量。"
+      },
+      {
+        "text": "require",
+        "phonetic": "/rɪˈkwaɪə/",
+        "meaning": "v. 需要；要求",
+        "example": "This task requires careful planning.",
+        "exampleMeaning": "这项任务需要仔细规划。"
+      },
+      {
+        "text": "responsible",
+        "phonetic": "/rɪˈspɒnsəbəl/",
+        "meaning": "adj. 负责的；有责任的",
+        "example": "She is responsible for the reading club.",
+        "exampleMeaning": "她负责这个读书社团。"
+      },
+      {
+        "text": "support",
+        "phonetic": "/səˈpɔːt/",
+        "meaning": "v. 支持；n. 支持",
+        "example": "My friends support my decision to study abroad.",
+        "exampleMeaning": "朋友们支持我出国学习的决定。"
+      },
+      {
+        "text": "valuable",
+        "phonetic": "/ˈvæljuəbəl/",
+        "meaning": "adj. 有价值的；宝贵的",
+        "example": "The feedback gave us valuable information.",
+        "exampleMeaning": "这些反馈为我们提供了有价值的信息。"
+      }
+    ]
+  },
+  {
+    "title": "六级进阶词精选",
+    "subtitle": "把理解推进一层",
+    "description": "20 个适合进阶阅读与表达的词汇，配原创双语例句。精选学习样本，非完整考试词表。",
+    "category": "六级",
+    "color": "#6674A3",
+    "words": [
+      {
+        "text": "ambiguous",
+        "phonetic": "/æmˈbɪɡjuəs/",
+        "meaning": "adj. 含糊的；有多种解释的",
+        "example": "The ambiguous message left everyone with different expectations.",
+        "exampleMeaning": "这条含糊的信息让每个人产生了不同的预期。"
+      },
+      {
+        "text": "coherent",
+        "phonetic": "/kəʊˈhɪərənt/",
+        "meaning": "adj. 连贯的；条理清楚的",
+        "example": "Arrange your ideas into a coherent argument.",
+        "exampleMeaning": "把你的想法组织成条理清楚的论证。"
+      },
+      {
+        "text": "comprise",
+        "phonetic": "/kəmˈpraɪz/",
+        "meaning": "v. 包含；由……组成",
+        "example": "The course comprises six short learning modules.",
+        "exampleMeaning": "这门课程由六个简短的学习模块组成。"
+      },
+      {
+        "text": "diminish",
+        "phonetic": "/dɪˈmɪnɪʃ/",
+        "meaning": "v. 减少；减弱",
+        "example": "The noise began to diminish after midnight.",
+        "exampleMeaning": "午夜过后，噪声开始减弱。"
+      },
+      {
+        "text": "diverse",
+        "phonetic": "/daɪˈvɜːs/",
+        "meaning": "adj. 多样的；不同的",
+        "example": "The team brings together people with diverse skills.",
+        "exampleMeaning": "这个团队汇集了具有不同技能的人。"
+      },
+      {
+        "text": "elaborate",
+        "phonetic": "/ɪˈlæbərət/",
+        "meaning": "adj. 精心制作的；复杂的",
+        "example": "They designed an elaborate model of the station.",
+        "exampleMeaning": "他们精心制作了一个车站模型。"
+      },
+      {
+        "text": "feasible",
+        "phonetic": "/ˈfiːzəbəl/",
+        "meaning": "adj. 可行的",
+        "example": "A smaller project may be more feasible this month.",
+        "exampleMeaning": "这个月开展一个较小的项目或许更可行。"
+      },
+      {
+        "text": "inevitable",
+        "phonetic": "/ɪnˈevɪtəbəl/",
+        "meaning": "adj. 不可避免的",
+        "example": "Some delays are inevitable during the repairs.",
+        "exampleMeaning": "维修期间有些延误是不可避免的。"
+      },
+      {
+        "text": "initiative",
+        "phonetic": "/ɪˈnɪʃətɪv/",
+        "meaning": "n. 主动性；新举措",
+        "example": "Her initiative helped the group finish early.",
+        "exampleMeaning": "她的主动性帮助小组提前完成了任务。"
+      },
+      {
+        "text": "insight",
+        "phonetic": "/ˈɪnsaɪt/",
+        "meaning": "n. 深入理解；洞察",
+        "example": "The interview offered insight into local traditions.",
+        "exampleMeaning": "这次访谈让人深入了解了当地传统。"
+      },
+      {
+        "text": "integrate",
+        "phonetic": "/ˈɪntɪɡreɪt/",
+        "meaning": "v. 整合；融入",
+        "example": "We integrate short reviews into every lesson.",
+        "exampleMeaning": "我们把简短复习融入每一课。"
+      },
+      {
+        "text": "intrinsic",
+        "phonetic": "/ɪnˈtrɪnzɪk/",
+        "meaning": "adj. 内在的；固有的",
+        "example": "Curiosity has intrinsic value in learning.",
+        "exampleMeaning": "好奇心在学习中具有内在价值。"
+      },
+      {
+        "text": "perceive",
+        "phonetic": "/pəˈsiːv/",
+        "meaning": "v. 察觉；理解为",
+        "example": "People may perceive the same event differently.",
+        "exampleMeaning": "人们可能以不同方式理解同一件事。"
+      },
+      {
+        "text": "persistent",
+        "phonetic": "/pəˈsɪstənt/",
+        "meaning": "adj. 持续的；坚持不懈的",
+        "example": "Persistent practice gradually made the task easier.",
+        "exampleMeaning": "坚持练习逐渐让这项任务变得更容易。"
+      },
+      {
+        "text": "profound",
+        "phonetic": "/prəˈfaʊnd/",
+        "meaning": "adj. 深刻的；影响深远的",
+        "example": "The experience had a profound effect on her choices.",
+        "exampleMeaning": "这段经历对她的选择产生了深远影响。"
+      },
+      {
+        "text": "resilient",
+        "phonetic": "/rɪˈzɪliənt/",
+        "meaning": "adj. 能迅速恢复的；有韧性的",
+        "example": "A resilient community can recover from difficult times.",
+        "exampleMeaning": "一个有韧性的社区能够从困难时期恢复过来。"
+      },
+      {
+        "text": "scrutinize",
+        "phonetic": "/ˈskruːtənaɪz/",
+        "meaning": "v. 仔细检查；审视",
+        "example": "The editor will scrutinize every source in the report.",
+        "exampleMeaning": "编辑会仔细检查报告中的每一个来源。"
+      },
+      {
+        "text": "subtle",
+        "phonetic": "/ˈsʌtəl/",
+        "meaning": "adj. 细微的；不易察觉的",
+        "example": "There is a subtle difference between these two phrases.",
+        "exampleMeaning": "这两个短语之间有细微的差别。"
+      },
+      {
+        "text": "sustainable",
+        "phonetic": "/səˈsteɪnəbəl/",
+        "meaning": "adj. 可持续的",
+        "example": "The town is looking for sustainable transport options.",
+        "exampleMeaning": "这个小镇正在寻找可持续的交通方案。"
+      },
+      {
+        "text": "worthwhile",
+        "phonetic": "/ˌwɜːθˈwaɪl/",
+        "meaning": "adj. 值得投入时间或精力的",
+        "example": "Helping new students settle in was worthwhile.",
+        "exampleMeaning": "帮助新生适应环境是值得的。"
+      }
+    ]
+  },
+  {
+    "title": "考研阅读词精选",
+    "subtitle": "读懂论证与观点",
+    "description": "20 个适合理解议论文的词汇，配原创双语例句。精选学习样本，非完整考试词表。",
+    "category": "考研",
+    "color": "#A4764A",
+    "words": [
+      {
+        "text": "analysis",
+        "phonetic": "/əˈnæləsɪs/",
+        "meaning": "n. 分析",
+        "example": "The analysis reveals a change in reading habits.",
+        "exampleMeaning": "这项分析揭示了阅读习惯的变化。"
+      },
+      {
+        "text": "assumption",
+        "phonetic": "/əˈsʌmpʃən/",
+        "meaning": "n. 假设；未经证实的看法",
+        "example": "We should test that assumption before moving forward.",
+        "exampleMeaning": "继续推进前，我们应该检验这个假设。"
+      },
+      {
+        "text": "authority",
+        "phonetic": "/ɔːˈθɒrəti/",
+        "meaning": "n. 权力；权威；主管机构",
+        "example": "The local authority approved the new cycle path.",
+        "exampleMeaning": "当地主管机构批准了新的自行车道。"
+      },
+      {
+        "text": "bias",
+        "phonetic": "/ˈbaɪəs/",
+        "meaning": "n. 偏见；偏向",
+        "example": "A larger sample can help expose hidden bias.",
+        "exampleMeaning": "更大的样本可以帮助揭示隐藏的偏差。"
+      },
+      {
+        "text": "capacity",
+        "phonetic": "/kəˈpæsəti/",
+        "meaning": "n. 能力；容量",
+        "example": "The training increased our capacity to solve problems.",
+        "exampleMeaning": "这次培训提升了我们解决问题的能力。"
+      },
+      {
+        "text": "challenge",
+        "phonetic": "/ˈtʃælɪndʒ/",
+        "meaning": "n. 挑战；v. 质疑",
+        "example": "New evidence may challenge the original explanation.",
+        "exampleMeaning": "新的证据可能会质疑原先的解释。"
+      },
+      {
+        "text": "consequence",
+        "phonetic": "/ˈkɒnsɪkwəns/",
+        "meaning": "n. 结果；后果",
+        "example": "Every policy can have an unexpected consequence.",
+        "exampleMeaning": "每项政策都可能产生意想不到的后果。"
+      },
+      {
+        "text": "conventional",
+        "phonetic": "/kənˈvenʃənəl/",
+        "meaning": "adj. 常规的；传统的",
+        "example": "The study questions conventional ideas about success.",
+        "exampleMeaning": "这项研究质疑了关于成功的传统观念。"
+      },
+      {
+        "text": "evidence",
+        "phonetic": "/ˈevɪdəns/",
+        "meaning": "n. 证据；依据",
+        "example": "The claim needs stronger evidence.",
+        "exampleMeaning": "这个主张需要更有力的证据。"
+      },
+      {
+        "text": "framework",
+        "phonetic": "/ˈfreɪmwɜːk/",
+        "meaning": "n. 框架；体系",
+        "example": "This framework helps us organize the findings.",
+        "exampleMeaning": "这个框架帮助我们整理研究发现。"
+      },
+      {
+        "text": "hypothesis",
+        "phonetic": "/haɪˈpɒθəsɪs/",
+        "meaning": "n. 假说；假设",
+        "example": "The experiment was designed to test our hypothesis.",
+        "exampleMeaning": "这个实验旨在检验我们的假说。"
+      },
+      {
+        "text": "implication",
+        "phonetic": "/ˌɪmplɪˈkeɪʃən/",
+        "meaning": "n. 可能的影响；隐含意义",
+        "example": "The discovery has an important implication for teaching.",
+        "exampleMeaning": "这一发现对教学有重要的启示。"
+      },
+      {
+        "text": "incentive",
+        "phonetic": "/ɪnˈsentɪv/",
+        "meaning": "n. 激励；促使行动的因素",
+        "example": "Flexible hours offer an incentive to stay.",
+        "exampleMeaning": "弹性工作时间为留下来提供了动力。"
+      },
+      {
+        "text": "objective",
+        "phonetic": "/əbˈdʒektɪv/",
+        "meaning": "adj. 客观的；n. 目标",
+        "example": "An objective review considers both strengths and weaknesses.",
+        "exampleMeaning": "客观的评价会同时考虑优点和缺点。"
+      },
+      {
+        "text": "perspective",
+        "phonetic": "/pəˈspektɪv/",
+        "meaning": "n. 视角；看法",
+        "example": "Working abroad gave him a different perspective.",
+        "exampleMeaning": "在国外工作让他拥有了不同的视角。"
+      },
+      {
+        "text": "priority",
+        "phonetic": "/praɪˈɒrəti/",
+        "meaning": "n. 优先事项；优先权",
+        "example": "Improving public access is our main priority.",
+        "exampleMeaning": "改善公众的使用条件是我们的首要任务。"
+      },
+      {
+        "text": "regulation",
+        "phonetic": "/ˌreɡjuˈleɪʃən/",
+        "meaning": "n. 规章；监管",
+        "example": "The new regulation limits noise near schools.",
+        "exampleMeaning": "新规限制了学校附近的噪声。"
+      },
+      {
+        "text": "tendency",
+        "phonetic": "/ˈtendənsi/",
+        "meaning": "n. 倾向；趋势",
+        "example": "People have a tendency to remember unusual events.",
+        "exampleMeaning": "人们倾向于记住不寻常的事件。"
+      },
+      {
+        "text": "valid",
+        "phonetic": "/ˈvælɪd/",
+        "meaning": "adj. 有效的；有根据的",
+        "example": "Your concern is valid and deserves an answer.",
+        "exampleMeaning": "你的担忧有道理，值得得到回应。"
+      },
+      {
+        "text": "welfare",
+        "phonetic": "/ˈwelfeə/",
+        "meaning": "n. 福祉；福利",
+        "example": "The project focuses on the welfare of older residents.",
+        "exampleMeaning": "这个项目关注老年居民的福祉。"
+      }
+    ]
+  },
+  {
+    "title": "雅思话题词精选",
+    "subtitle": "城市与环境表达",
+    "description": "20 个城市、环境与生活话题词，配原创双语例句。精选学习样本，非完整考试词表。",
+    "category": "雅思",
+    "color": "#8A709F",
+    "words": [
+      {
+        "text": "biodiversity",
+        "phonetic": "/ˌbaɪəʊdaɪˈvɜːsəti/",
+        "meaning": "n. 生物多样性",
+        "example": "Small urban gardens can support local biodiversity.",
+        "exampleMeaning": "小型城市花园可以支持当地的生物多样性。"
+      },
+      {
+        "text": "commute",
+        "phonetic": "/kəˈmjuːt/",
+        "meaning": "v. 通勤；n. 通勤路程",
+        "example": "I commute by train three days a week.",
+        "exampleMeaning": "我每周有三天乘火车通勤。"
+      },
+      {
+        "text": "conservation",
+        "phonetic": "/ˌkɒnsəˈveɪʃən/",
+        "meaning": "n. 保护；节约",
+        "example": "Water conservation starts with small changes at home.",
+        "exampleMeaning": "节约用水从家中的小改变开始。"
+      },
+      {
+        "text": "congestion",
+        "phonetic": "/kənˈdʒestʃən/",
+        "meaning": "n. 拥堵",
+        "example": "Better bus services may ease traffic congestion.",
+        "exampleMeaning": "更好的公交服务可能缓解交通拥堵。"
+      },
+      {
+        "text": "consumption",
+        "phonetic": "/kənˈsʌmpʃən/",
+        "meaning": "n. 消耗；消费",
+        "example": "The new lights reduce electricity consumption.",
+        "exampleMeaning": "新灯具减少了电力消耗。"
+      },
+      {
+        "text": "emission",
+        "phonetic": "/ɪˈmɪʃən/",
+        "meaning": "n. 排放；排放物",
+        "example": "The factory measures the emission of harmful gases.",
+        "exampleMeaning": "这家工厂测量有害气体的排放量。"
+      },
+      {
+        "text": "habitat",
+        "phonetic": "/ˈhæbɪtæt/",
+        "meaning": "n. 栖息地",
+        "example": "The wetland provides a habitat for many birds.",
+        "exampleMeaning": "这片湿地为许多鸟类提供了栖息地。"
+      },
+      {
+        "text": "infrastructure",
+        "phonetic": "/ˈɪnfrəstrʌktʃə/",
+        "meaning": "n. 基础设施",
+        "example": "The city needs to repair its ageing infrastructure.",
+        "exampleMeaning": "这座城市需要维修老化的基础设施。"
+      },
+      {
+        "text": "landfill",
+        "phonetic": "/ˈlændfɪl/",
+        "meaning": "n. 垃圾填埋场；填埋",
+        "example": "Repairing old furniture keeps it out of landfill.",
+        "exampleMeaning": "修理旧家具可以避免它们被送去填埋。"
+      },
+      {
+        "text": "migration",
+        "phonetic": "/maɪˈɡreɪʃən/",
+        "meaning": "n. 迁移；移民",
+        "example": "Seasonal migration changes the number of birds here.",
+        "exampleMeaning": "季节性迁徙改变了这里的鸟类数量。"
+      },
+      {
+        "text": "renewable",
+        "phonetic": "/rɪˈnjuːəbəl/",
+        "meaning": "adj. 可再生的",
+        "example": "The school now uses more renewable energy.",
+        "exampleMeaning": "这所学校现在使用了更多可再生能源。"
+      },
+      {
+        "text": "resource",
+        "phonetic": "/rɪˈsɔːs/",
+        "meaning": "n. 资源",
+        "example": "Clean water is a resource we must protect.",
+        "exampleMeaning": "清洁的水是我们必须保护的资源。"
+      },
+      {
+        "text": "rural",
+        "phonetic": "/ˈrʊərəl/",
+        "meaning": "adj. 农村的；乡村的",
+        "example": "Reliable internet can benefit rural communities.",
+        "exampleMeaning": "可靠的互联网能让农村社区受益。"
+      },
+      {
+        "text": "sanitation",
+        "phonetic": "/ˌsænɪˈteɪʃən/",
+        "meaning": "n. 公共卫生设施及措施",
+        "example": "Better sanitation protects the health of the whole village.",
+        "exampleMeaning": "更好的卫生设施保护了整个村庄的健康。"
+      },
+      {
+        "text": "sewage",
+        "phonetic": "/ˈsuːɪdʒ/",
+        "meaning": "n. 污水",
+        "example": "The plant treats sewage before it reaches the river.",
+        "exampleMeaning": "这座处理厂在污水流入河流前对其进行处理。"
+      },
+      {
+        "text": "subsidy",
+        "phonetic": "/ˈsʌbsədi/",
+        "meaning": "n. 补贴",
+        "example": "A transport subsidy helps residents buy bus passes.",
+        "exampleMeaning": "交通补贴帮助居民购买公交月票。"
+      },
+      {
+        "text": "tourism",
+        "phonetic": "/ˈtʊərɪzəm/",
+        "meaning": "n. 旅游业",
+        "example": "Responsible tourism can support local craftspeople.",
+        "exampleMeaning": "负责任的旅游可以支持当地手工艺人。"
+      },
+      {
+        "text": "urban",
+        "phonetic": "/ˈɜːbən/",
+        "meaning": "adj. 城市的",
+        "example": "Urban parks give residents space to relax.",
+        "exampleMeaning": "城市公园为居民提供了放松的空间。"
+      },
+      {
+        "text": "vegetation",
+        "phonetic": "/ˌvedʒəˈteɪʃən/",
+        "meaning": "n. 植被",
+        "example": "Thick vegetation covers the northern side of the hill.",
+        "exampleMeaning": "茂密的植被覆盖了山丘的北侧。"
+      },
+      {
+        "text": "wildlife",
+        "phonetic": "/ˈwaɪldlaɪf/",
+        "meaning": "n. 野生动物",
+        "example": "Visitors should observe wildlife from a safe distance.",
+        "exampleMeaning": "游客应在安全距离外观察野生动物。"
+      }
+    ]
+  },
+  {
+    "title": "托福学术词精选",
+    "subtitle": "自然科学入门",
+    "description": "20 个自然科学与学术课堂常用词，配原创双语例句。精选学习样本，非完整考试词表。",
+    "category": "托福",
+    "color": "#AD6D76",
+    "words": [
+      {
+        "text": "adaptation",
+        "phonetic": "/ˌædæpˈteɪʃən/",
+        "meaning": "n. 适应；适应性变化",
+        "example": "Thick fur is an adaptation to cold conditions.",
+        "exampleMeaning": "浓密的皮毛是对寒冷环境的一种适应。"
+      },
+      {
+        "text": "archaeology",
+        "phonetic": "/ˌɑːkiˈɒlədʒi/",
+        "meaning": "n. 考古学",
+        "example": "Archaeology can reveal how ancient communities lived.",
+        "exampleMeaning": "考古学能够揭示古代社群的生活方式。"
+      },
+      {
+        "text": "asteroid",
+        "phonetic": "/ˈæstərɔɪd/",
+        "meaning": "n. 小行星",
+        "example": "The telescope tracked an asteroid near Mars.",
+        "exampleMeaning": "这台望远镜追踪了一颗火星附近的小行星。"
+      },
+      {
+        "text": "atmosphere",
+        "phonetic": "/ˈætməsfɪə/",
+        "meaning": "n. 大气层；气氛",
+        "example": "Earth’s atmosphere contains gases that support life.",
+        "exampleMeaning": "地球大气层中含有支持生命的气体。"
+      },
+      {
+        "text": "cell",
+        "phonetic": "/sel/",
+        "meaning": "n. 细胞",
+        "example": "We examined a plant cell under the microscope.",
+        "exampleMeaning": "我们在显微镜下观察了一个植物细胞。"
+      },
+      {
+        "text": "chromosome",
+        "phonetic": "/ˈkrəʊməsəʊm/",
+        "meaning": "n. 染色体",
+        "example": "A chromosome carries many genes.",
+        "exampleMeaning": "一条染色体携带许多基因。"
+      },
+      {
+        "text": "ecosystem",
+        "phonetic": "/ˈiːkəʊsɪstəm/",
+        "meaning": "n. 生态系统",
+        "example": "A healthy pond supports a complex ecosystem.",
+        "exampleMeaning": "一个健康的池塘支持着复杂的生态系统。"
+      },
+      {
+        "text": "erosion",
+        "phonetic": "/ɪˈrəʊʒən/",
+        "meaning": "n. 侵蚀；水土流失",
+        "example": "Tree roots help slow soil erosion.",
+        "exampleMeaning": "树根有助于减缓水土流失。"
+      },
+      {
+        "text": "fossil",
+        "phonetic": "/ˈfɒsəl/",
+        "meaning": "n. 化石",
+        "example": "The fossil preserved the shape of an ancient leaf.",
+        "exampleMeaning": "这块化石保存了一片古代树叶的形状。"
+      },
+      {
+        "text": "glacier",
+        "phonetic": "/ˈɡlæsiə/",
+        "meaning": "n. 冰川",
+        "example": "The glacier moves slowly through the valley.",
+        "exampleMeaning": "这条冰川缓慢地穿过山谷。"
+      },
+      {
+        "text": "gravity",
+        "phonetic": "/ˈɡrævəti/",
+        "meaning": "n. 重力；引力",
+        "example": "Gravity keeps the moon moving around Earth.",
+        "exampleMeaning": "引力使月球持续绕地球运动。"
+      },
+      {
+        "text": "irrigation",
+        "phonetic": "/ˌɪrɪˈɡeɪʃən/",
+        "meaning": "n. 灌溉",
+        "example": "Farmers use drip irrigation to save water.",
+        "exampleMeaning": "农民使用滴灌来节约用水。"
+      },
+      {
+        "text": "molecule",
+        "phonetic": "/ˈmɒlɪkjuːl/",
+        "meaning": "n. 分子",
+        "example": "A water molecule contains three atoms.",
+        "exampleMeaning": "一个水分子含有三个原子。"
+      },
+      {
+        "text": "neuron",
+        "phonetic": "/ˈnjʊərɒn/",
+        "meaning": "n. 神经元",
+        "example": "A neuron sends signals to other cells.",
+        "exampleMeaning": "神经元向其他细胞传递信号。"
+      },
+      {
+        "text": "orbit",
+        "phonetic": "/ˈɔːbɪt/",
+        "meaning": "n. 轨道；v. 环绕运行",
+        "example": "The satellite entered a stable orbit.",
+        "exampleMeaning": "这颗卫星进入了一条稳定的轨道。"
+      },
+      {
+        "text": "photosynthesis",
+        "phonetic": "/ˌfəʊtəʊˈsɪnθəsɪs/",
+        "meaning": "n. 光合作用",
+        "example": "Photosynthesis allows plants to use energy from sunlight.",
+        "exampleMeaning": "光合作用使植物能够利用阳光中的能量。"
+      },
+      {
+        "text": "sediment",
+        "phonetic": "/ˈsedɪmənt/",
+        "meaning": "n. 沉积物",
+        "example": "Layers of sediment collected at the lake bottom.",
+        "exampleMeaning": "一层层沉积物堆积在湖底。"
+      },
+      {
+        "text": "species",
+        "phonetic": "/ˈspiːʃiːz/",
+        "meaning": "n. 物种",
+        "example": "Several bird species share this small island.",
+        "exampleMeaning": "几种鸟类共同栖息在这座小岛上。"
+      },
+      {
+        "text": "tectonic",
+        "phonetic": "/tekˈtɒnɪk/",
+        "meaning": "adj. 地壳构造的",
+        "example": "Tectonic plates move over very long periods.",
+        "exampleMeaning": "构造板块在极其漫长的时间尺度上移动。"
+      },
+      {
+        "text": "volcano",
+        "phonetic": "/vɒlˈkeɪnəʊ/",
+        "meaning": "n. 火山",
+        "example": "Scientists monitor the volcano for signs of activity.",
+        "exampleMeaning": "科学家监测这座火山，寻找活动迹象。"
+      }
+    ]
+  },
+  {
+    "title": "日常生活词精选",
+    "subtitle": "让英语走进生活",
+    "description": "20 个购物、出行和日常生活词汇，配原创双语例句。轻量学习样本，适合建立每日学习习惯。",
+    "category": "日常",
+    "color": "#4A8892",
+    "words": [
+      {
+        "text": "appointment",
+        "phonetic": "/əˈpɔɪntmənt/",
+        "meaning": "n. 预约；约定",
+        "example": "I have a dentist appointment on Friday.",
+        "exampleMeaning": "我预约了周五去看牙医。"
+      },
+      {
+        "text": "backpack",
+        "phonetic": "/ˈbækpæk/",
+        "meaning": "n. 双肩背包",
+        "example": "There is room for a bottle in my backpack.",
+        "exampleMeaning": "我的背包里还能放下一瓶水。"
+      },
+      {
+        "text": "bargain",
+        "phonetic": "/ˈbɑːɡən/",
+        "meaning": "n. 便宜货；v. 讨价还价",
+        "example": "This warm coat was a real bargain.",
+        "exampleMeaning": "这件暖和的大衣买得真划算。"
+      },
+      {
+        "text": "battery",
+        "phonetic": "/ˈbætəri/",
+        "meaning": "n. 电池",
+        "example": "My phone battery is almost empty.",
+        "exampleMeaning": "我的手机电池快没电了。"
+      },
+      {
+        "text": "blanket",
+        "phonetic": "/ˈblæŋkɪt/",
+        "meaning": "n. 毯子",
+        "example": "Please put an extra blanket on the bed.",
+        "exampleMeaning": "请在床上再放一条毯子。"
+      },
+      {
+        "text": "borrow",
+        "phonetic": "/ˈbɒrəʊ/",
+        "meaning": "v. 借入；借用",
+        "example": "May I borrow your charger for a moment?",
+        "exampleMeaning": "我可以借用一下你的充电器吗？"
+      },
+      {
+        "text": "cancel",
+        "phonetic": "/ˈkænsəl/",
+        "meaning": "v. 取消",
+        "example": "We had to cancel the picnic because of rain.",
+        "exampleMeaning": "因为下雨，我们不得不取消野餐。"
+      },
+      {
+        "text": "receipt",
+        "phonetic": "/rɪˈsiːt/",
+        "meaning": "n. 收据；购物小票",
+        "example": "Keep the receipt until you try the shoes.",
+        "exampleMeaning": "试穿鞋子之前，先保留好购物小票。"
+      },
+      {
+        "text": "convenient",
+        "phonetic": "/kənˈviːniənt/",
+        "meaning": "adj. 方便的",
+        "example": "The shop is in a convenient location.",
+        "exampleMeaning": "这家商店的位置很方便。"
+      },
+      {
+        "text": "cupboard",
+        "phonetic": "/ˈkʌbəd/",
+        "meaning": "n. 橱柜",
+        "example": "The clean cups are in the cupboard.",
+        "exampleMeaning": "干净的杯子放在橱柜里。"
+      },
+      {
+        "text": "delivery",
+        "phonetic": "/dɪˈlɪvəri/",
+        "meaning": "n. 配送；递送",
+        "example": "The delivery should arrive before lunch.",
+        "exampleMeaning": "配送的物品应该在午饭前送到。"
+      },
+      {
+        "text": "elevator",
+        "phonetic": "/ˈelɪveɪtə/",
+        "meaning": "n. 电梯",
+        "example": "Take the elevator to the fifth floor.",
+        "exampleMeaning": "乘电梯去五楼。"
+      },
+      {
+        "text": "grocery",
+        "phonetic": "/ˈɡrəʊsəri/",
+        "meaning": "n. 食品杂货；食品杂货店",
+        "example": "The grocery store closes at nine.",
+        "exampleMeaning": "这家食品杂货店九点关门。"
+      },
+      {
+        "text": "laundry",
+        "phonetic": "/ˈlɔːndri/",
+        "meaning": "n. 待洗衣物；洗衣",
+        "example": "I usually do the laundry on Sunday.",
+        "exampleMeaning": "我通常在周日洗衣服。"
+      },
+      {
+        "text": "luggage",
+        "phonetic": "/ˈlʌɡɪdʒ/",
+        "meaning": "n. 行李",
+        "example": "Please keep your luggage beside your seat.",
+        "exampleMeaning": "请把行李放在座位旁边。"
+      },
+      {
+        "text": "pharmacy",
+        "phonetic": "/ˈfɑːməsi/",
+        "meaning": "n. 药店",
+        "example": "There is a pharmacy across from the station.",
+        "exampleMeaning": "车站对面有一家药店。"
+      },
+      {
+        "text": "queue",
+        "phonetic": "/kjuː/",
+        "meaning": "n. 队列；v. 排队",
+        "example": "We joined the queue for fresh bread.",
+        "exampleMeaning": "我们排队购买新鲜面包。"
+      },
+      {
+        "text": "refund",
+        "phonetic": "/ˈriːfʌnd/",
+        "meaning": "n. 退款",
+        "example": "The shop offered a full refund for the broken lamp.",
+        "exampleMeaning": "商店为这盏损坏的灯提供了全额退款。"
+      },
+      {
+        "text": "reservation",
+        "phonetic": "/ˌrezəˈveɪʃən/",
+        "meaning": "n. 预订",
+        "example": "I made a reservation for two people.",
+        "exampleMeaning": "我预订了两个人的位置。"
+      },
+      {
+        "text": "umbrella",
+        "phonetic": "/ʌmˈbrelə/",
+        "meaning": "n. 雨伞",
+        "example": "Take an umbrella in case the weather changes.",
+        "exampleMeaning": "带把伞，以防天气变化。"
+      }
+    ]
+  }
+]
