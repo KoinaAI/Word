@@ -224,3 +224,6 @@ kbd { font-family: inherit; border: 1px solid #e1e4e7; color: var(--muted); font
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
 
 @media (max-width: 480px) { .hero-art { display: none; } .hero-copy { max-width: 100%; } .hero-copy p { max-width: 100%; } }
+
+/* Sheet reserves content-box space for its native scroll-snap dismissal area. */
+.sheet__content { box-sizing: content-box; }
