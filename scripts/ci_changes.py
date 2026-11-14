@@ -32,7 +32,7 @@ config = any(path.startswith(".github/") or path == "scripts/ci_changes.py" for 
 checks = {
     "frontend": config or any(path.startswith("web/") for path in files),
     "backend": config or any(path.startswith("backend/") for path in files),
-    "container": config or any(path in {"Dockerfile", "compose.yaml", ".dockerignore", ".env.example"} or path == "scripts/smoke_container.py" for path in files),
+    "container": config or any(path in {"Dockerfile", "compose.yaml", ".dockerignore", ".env.example", "scripts/smoke_container.py", "scripts/verify_image.py", "scripts/prepare_pro_archive.py"} for path in files),
 }
 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
     for check, selected in checks.items():

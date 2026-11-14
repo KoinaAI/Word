@@ -108,7 +108,26 @@ python3 scripts/smoke_container.py word:local
 
 GitHub Actions 的 `Scoped checks` 记录实际验证范围。只有可信分支推送能使用 `HEROUI_AUTH_TOKEN`；未配置 token 或 PR 环境中，前端/容器任务明确标记为跳过，不能把该运行当作完整前端构建证据。合并前应补充授权的本地构建结果。
 
-配置仓库 Actions secret `HEROUI_AUTH_TOKEN` 后，向已合入 `main` 的提交推送新的 `vX.Y.Z` 标签，将执行版本验证并发布 `ghcr.io/koinaai/word:vX.Y.Z` 和 `sha-<完整提交 SHA>`。流水线先验证构建出的 `linux/amd64` 镜像，再推送同一镜像并按 digest 回拉检查，不覆盖已有版本标签。未配置 token 时自动发布会明确失败；本机可使用授权缓存构建、验证，再发布该镜像。
+向已合入 `main` 的提交推送新的 `vX.Y.Z` 标签，将执行完整后端验证并发布 `ghcr.io/koinaai/word:vX.Y.Z`。流水线优先拉取已发布的 `sha-<完整提交 SHA>` 候选镜像，检查 `linux/amd64` 平台、源码仓库及提交标签，再运行容器检查并给同一份镜像添加版本标签。没有候选镜像时，使用仓库 Actions secret `HEROUI_AUTH_TOKEN` 从源码构建；两者都不存在则明确失败。
+
+本机持有授权缓存时，在推送版本标签之前，先从已合入 `main` 的确切提交构建并发布 SHA 候选：
+
+```sh
+revision=$(git rev-parse HEAD)
+version=v0.1.0
+image="ghcr.io/koinaai/word:sha-$revision"
+docker build --platform linux/amd64 \
+  --secret id=heroui_package,src=.secrets/heroui-pro.tgz \
+  --build-arg VCS_REF="$revision" --build-arg VERSION="$version" -t "$image" .
+python3 scripts/verify_image.py "$image" "$revision"
+python3 scripts/smoke_container.py "$image"
+# 使用有 package 写权限的账号登录后，确认 SHA 标签尚不存在，再推送。
+docker push "$image"
+git tag -a "$version" -m "$version"
+git push origin "$version"
+```
+
+发布流水线只接受当前提交对应的候选镜像，不重建或覆盖已有 SHA 镜像。版本镜像发布后会按 registry digest 回拉，确认镜像 ID 与已测试候选一致，再验证运行。GHCR 包需要授予本仓库的 Actions 访问权限。
 
 如果发布在部分标签已推送后中断，直接重跑会因标签已存在而停止。先核对已发布镜像的 digest、源码提交标签和验证结果，再从该 digest 恢复缺失的标签或使用新版本修复；不要移动版本标签或覆盖旧镜像。
 
