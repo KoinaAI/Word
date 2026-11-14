@@ -2,7 +2,9 @@
 .github
 .env
 .env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 **/.npmrc
 .secrets
 **/node_modules
