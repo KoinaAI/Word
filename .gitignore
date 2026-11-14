@@ -1,6 +1,9 @@
 node_modules/
 web/dist/
 .env
+.env.*
+!.env.example
+.secrets/
 *.db
 *.db-shm
 *.db-wal
@@ -9,3 +12,7 @@ data/
 artifacts/
 .DS_Store
 word-server
+
+*.tsbuildinfo
+
+__pycache__/
