@@ -1,6 +1,9 @@
 node_modules/
 web/dist/
 .env
+.env.*
+!.env.example
+.secrets/
 *.db
 *.db-shm
 *.db-wal
