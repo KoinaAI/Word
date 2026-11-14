@@ -175,7 +175,14 @@ export function BookCover({
     >
       <div className="book-cover-rule" />
       <span className="book-cover-brand">就背单词 · 精选词库</span>
-      <strong>{book.subtitle || book.category}</strong>
+      <strong>
+        {/^(CET4|CET6|IELTS|TOEFL)/.exec(book.title)?.[0] ||
+          (book.category === "考研"
+            ? "Postgrad"
+            : book.category === "日常"
+              ? "Everyday"
+              : book.subtitle.slice(0, 12) || book.category)}
+      </strong>
       <span className="book-cover-title">
         {book.title.replace(/精选/g, "")}
       </span>

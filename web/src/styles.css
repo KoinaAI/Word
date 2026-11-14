@@ -1703,3 +1703,8 @@ p {
     margin-top: 15px;
   }
 }
+
+.answer-buttons .button {
+  width: 100%;
+  min-width: 0;
+}

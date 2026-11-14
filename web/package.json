@@ -14,6 +14,7 @@
     "@heroui-pro/react": "1.0.0-beta.11",
     "@heroui/react": "3.2.7",
     "@heroui/styles": "3.2.7",
+    "@iconify-json/gravity-ui": "1.2.15",
     "@iconify/react": "6.0.4",
     "@number-flow/react": "0.6.2",
     "@radix-ui/react-dialog": "1.3.1",
@@ -64,5 +65,9 @@
   },
   "overrides": {
     "figlet": "1.11.3"
-  }
+  },
+  "allowScripts": [
+    "@heroui-pro/react",
+    "@zowe/secrets-for-zowe-sdk"
+  ]
 }

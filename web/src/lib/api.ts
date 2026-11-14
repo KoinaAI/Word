@@ -63,7 +63,7 @@ export type AdminStats = {
   recent: Recent[];
 };
 export type Navigation = {
-  id: string;
+  id: number;
   label: string;
   path: string;
   icon: string;

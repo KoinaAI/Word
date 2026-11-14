@@ -25,7 +25,7 @@ All API routes under `/api`. JSON keys camelCase. Success returns payload direct
 - POST /admin/books/{id}/words {words:[{text,phonetic,meaning,example,exampleMeaning}]} => {imported:number} (atomic validated upsert, max 5000 words)
 - DELETE /admin/words/{id} => {ok:true}
 - GET /admin/users => [{id,name,email,role,guest,dailyGoal,learnedCount,createdAt}]
-- GET /admin/navigation => Navigation[] {id,label,path,icon,enabled,sortOrder}; initial modules overview /admin, books /admin/books, users /admin/users, navigation /admin/navigation. GET available to admin only; frontend loads it and resolves matching allowed module, never arbitrary code.
+- GET /admin/navigation => Navigation[] {id:number,label,path,icon,enabled,sortOrder}; initial modules overview /admin, books /admin/books, users /admin/users, navigation /admin/navigation. GET available to admin only; frontend loads it and resolves matching allowed module, never arbitrary code.
 - PUT /admin/navigation {items:Navigation[]} => Navigation[]; restrict path to supported admin modules, validate uniqueness, keep navigation module enabled.
 - GET /health => {status:"ok"}
 
