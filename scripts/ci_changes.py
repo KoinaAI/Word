@@ -25,7 +25,9 @@ elif event == "push":
 else:
     raise SystemExit("Unsupported CI event: " + event)
 
-files = git("diff", "--name-only", "--diff-filter=ACDMRTUXB", base, head).splitlines()
+# Treat renames as deletion/addition so moving a file out of a component still
+# checks its former owner, rather than seeing only the destination pathname.
+files = git("diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", base, head).splitlines()
 config = any(path.startswith(".github/") or path == "scripts/ci_changes.py" for path in files)
 checks = {
     "frontend": config or any(path.startswith("web/") for path in files),
