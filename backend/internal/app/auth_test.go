@@ -98,3 +98,28 @@ func TestGuestConversionIsolationAndOrigin(t *testing.T) {
 		t.Fatal("cross-origin mutation accepted")
 	}
 }
+
+func TestAdminRoutesRequireRole(t *testing.T) {
+	a := testApp(t)
+	cookie, _ := guestCookie(t, a)
+	for _, path := range []string{"/api/admin/stats", "/api/admin/books", "/api/admin/users", "/api/admin/navigation"} {
+		if got := request(t, a, "GET", path, nil, nil).Code; got != 401 {
+			t.Fatalf("anonymous %s: %d", path, got)
+		}
+		if got := request(t, a, "GET", path, nil, cookie).Code; got != 403 {
+			t.Fatalf("guest %s: %d", path, got)
+		}
+	}
+}
+
+func TestRelativeDatabasePath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	a, err := New(Config{DBPath: "nested/word.db"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if got := request(t, a, "GET", "/api/health", nil, nil).Code; got != 200 {
+		t.Fatalf("health status %d", got)
+	}
+}

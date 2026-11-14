@@ -239,7 +239,7 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	var previousWord int64
 	var previousMode, previousAnswer string
-	e = tx.QueryRow("SELECT COALESCE(word_id,0),mode,answer FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousWord, &previousMode, &previousAnswer)
+	e = tx.QueryRow("SELECT submitted_word_id,mode,answer FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousWord, &previousMode, &previousAnswer)
 	if e == nil {
 		if previousWord != req.WordID || previousMode != req.Mode || previousAnswer != req.Answer {
 			fail(w, 409, "记录编号已用于其他评分")
@@ -267,6 +267,10 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
+	if req.Mode == "sprint" && (req.Answer == "known" || req.Answer == "unsure-known") && (old.status == "mastered" || old.reinforce) {
+		fail(w, 409, "该单词已完成速刷，请刷新当前队列")
+		return
+	}
 	if req.Mode == "learn" && old.status != "" && old.status != "new" {
 		fail(w, 409, "该单词已进入复习或巩固队列")
 		return
@@ -288,7 +292,7 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, e = tx.Exec("INSERT INTO answers(user_id,word_id,word_text,word_meaning,mode,answer,event_id,created_at) VALUES(?,?,?,?,?,?,?,?)", u.ID, req.WordID, text, meaning, req.Mode, req.Answer, req.EventID, stamp(now)); e != nil {
+	if _, e = tx.Exec("INSERT INTO answers(user_id,word_id,submitted_word_id,word_text,word_meaning,mode,answer,event_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)", u.ID, req.WordID, req.WordID, text, meaning, req.Mode, req.Answer, req.EventID, stamp(now)); e != nil {
 		internal(w, e)
 		return
 	}

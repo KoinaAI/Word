@@ -114,6 +114,10 @@ func TestAnswerIdempotencyQueuesAndIsolation(t *testing.T) {
 	if rec = request(t, a, "POST", "/api/study/answer", payload, c1); rec.Code != 200 {
 		t.Fatal(rec.Body.String())
 	}
+	payload["eventId"] = "stale-second-tab-0004"
+	if rec = request(t, a, "POST", "/api/study/answer", payload, c1); rec.Code != 409 {
+		t.Fatal("stale sprint tab advanced repetition")
+	}
 	if len(readQueue("review", 1)) != 0 {
 		t.Fatal("review available before due time")
 	}
@@ -128,5 +132,51 @@ func TestAnswerIdempotencyQueuesAndIsolation(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &stats)
 	if stats.Learned != 1 || stats.Today != 1 || stats.Streak != 1 || len(stats.Activity) != 14 {
 		t.Fatalf("wrong persisted stats %s", rec.Body.String())
+	}
+}
+
+func TestDeletedWordsDoNotReuseIdentity(t *testing.T) {
+	a := testApp(t)
+	var oldID int64
+	if err := a.db.QueryRow("SELECT MAX(id) FROM words").Scan(&oldID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec("DELETE FROM words WHERE id=?", oldID); err != nil {
+		t.Fatal(err)
+	}
+	result, err := a.db.Exec("INSERT INTO words(book_id,text,meaning) VALUES(1,'replacement','替代词')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newID <= oldID {
+		t.Fatal("deleted word identity was reused")
+	}
+}
+
+func TestAnswerHistorySurvivesWordDeletion(t *testing.T) {
+	a := testApp(t)
+	cookie, _ := guestCookie(t, a)
+	payload := map[string]any{"wordId": 1, "mode": "sprint", "answer": "known", "eventId": "durable-history-0001"}
+	if rec := request(t, a, "POST", "/api/study/answer", payload, cookie); rec.Code != 200 {
+		t.Fatal(rec.Body.String())
+	}
+	if _, err := a.db.Exec("DELETE FROM words WHERE id=1"); err != nil {
+		t.Fatal(err)
+	}
+	if rec := request(t, a, "POST", "/api/study/answer", payload, cookie); rec.Code != 200 {
+		t.Fatalf("deleted word lost idempotency: %s", rec.Body.String())
+	}
+	rec := request(t, a, "GET", "/api/stats", nil, cookie)
+	var stats struct {
+		Today  int
+		Recent []Recent
+	}
+	json.Unmarshal(rec.Body.Bytes(), &stats)
+	if stats.Today != 1 || len(stats.Recent) != 1 || stats.Recent[0].Text == "" {
+		t.Fatalf("deletion changed learning history: %s", rec.Body.String())
 	}
 }

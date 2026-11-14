@@ -72,6 +72,11 @@ func New(cfg Config) (*App, error) {
 		}
 	}
 	if cfg.DBPath != ":memory:" {
+		absolute, err := filepath.Abs(cfg.DBPath)
+		if err != nil {
+			return nil, err
+		}
+		cfg.DBPath = absolute
 		if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0700); err != nil {
 			return nil, err
 		}
@@ -198,6 +203,16 @@ func (a *App) routes() {
 	a.mux.HandleFunc("GET /api/stats", a.auth(a.stats, false))
 	a.mux.HandleFunc("GET /api/favorites", a.auth(a.favorites, false))
 	a.mux.HandleFunc("POST /api/favorites/{id}", a.auth(a.favorite, false))
+	a.mux.HandleFunc("GET /api/admin/stats", a.auth(a.adminStats, true))
+	a.mux.HandleFunc("GET /api/admin/books", a.auth(a.adminBooks, true))
+	a.mux.HandleFunc("POST /api/admin/books", a.auth(a.createBook, true))
+	a.mux.HandleFunc("PATCH /api/admin/books/{id}", a.auth(a.updateBook, true))
+	a.mux.HandleFunc("DELETE /api/admin/books/{id}", a.auth(a.deleteBook, true))
+	a.mux.HandleFunc("POST /api/admin/books/{id}/words", a.auth(a.importWords, true))
+	a.mux.HandleFunc("DELETE /api/admin/words/{id}", a.auth(a.deleteWord, true))
+	a.mux.HandleFunc("GET /api/admin/users", a.auth(a.adminUsers, true))
+	a.mux.HandleFunc("GET /api/admin/navigation", a.auth(a.navigation, true))
+	a.mux.HandleFunc("PUT /api/admin/navigation", a.auth(a.saveNavigation, true))
 	a.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "接口不存在") })
 	a.mux.HandleFunc("/", a.spa)
 }

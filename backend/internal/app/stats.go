@@ -94,7 +94,7 @@ func (a *App) stats(w http.ResponseWriter, r *http.Request) {
 		Activity   []Activity `json:"activity"`
 		Recent     []Recent   `json:"recent"`
 	}
-	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM progress WHERE user_id=? AND status='mastered'),(SELECT COUNT(*) FROM progress WHERE user_id=? AND due_at<>'' AND due_at<=?),(SELECT COUNT(*) FROM progress WHERE user_id=? AND reinforce=1),(SELECT COUNT(*) FROM favorites WHERE user_id=?),(SELECT COUNT(DISTINCT word_id) FROM answers WHERE user_id=? AND created_at>=?),(SELECT COUNT(*) FROM words)`, id, id, stamp(now), id, id, id, start).Scan(&result.Learned, &result.Due, &result.Reinforce, &result.Favorites, &result.Today, &result.TotalWords)
+	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM progress WHERE user_id=? AND status='mastered'),(SELECT COUNT(*) FROM progress WHERE user_id=? AND due_at<>'' AND due_at<=?),(SELECT COUNT(*) FROM progress WHERE user_id=? AND reinforce=1),(SELECT COUNT(*) FROM favorites WHERE user_id=?),(SELECT COUNT(DISTINCT submitted_word_id) FROM answers WHERE user_id=? AND created_at>=?),(SELECT COUNT(*) FROM words)`, id, id, stamp(now), id, id, id, start).Scan(&result.Learned, &result.Due, &result.Reinforce, &result.Favorites, &result.Today, &result.TotalWords)
 	if e != nil {
 		internal(w, e)
 		return
