@@ -65,10 +65,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: "24"
+          node-version: "24.22.3"
       - name: Install licensed dependencies
         env:
-          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+          HEROUI_AUTH_TOKEN: ${{ github.event_name == 'push' && secrets.HEROUI_AUTH_TOKEN || '' }}
         run: npm ci
       - name: Typecheck and build
         run: npm run build
@@ -109,7 +109,7 @@ jobs:
         run: docker compose config --quiet
       - name: Build the container
         env:
-          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+          HEROUI_AUTH_TOKEN: ${{ github.event_name == 'push' && secrets.HEROUI_AUTH_TOKEN || '' }}
         run: docker build --secret id=heroui_token,env=HEROUI_AUTH_TOKEN -t word:check .
       - name: Check container startup and persistence
         run: python3 scripts/smoke_container.py word:check
