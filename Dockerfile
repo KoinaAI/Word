@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/root/.npm \
     node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("node_modules/@heroui-pro/react/package.json"));const l=JSON.parse(fs.readFileSync("package-lock.json"));if(p.version!==l.packages["node_modules/@heroui-pro/react"].version)throw Error("HeroUI Pro artifact version does not match package-lock.json")' && \
     npm run build && rm -rf node_modules/@heroui-pro/react /root/.heroui
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:30b1e546a9c7fa3b747c2bdba3a0c7bdf3a02ebb4c5b8405d2f948d7e8aac4ec AS api
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS api
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src/backend
