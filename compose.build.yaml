@@ -1,0 +1,10 @@
+services:
+  word:
+    image: word:local
+    build:
+      context: .
+      secrets:
+        - heroui_pro_archive
+secrets:
+  heroui_pro_archive:
+    file: ${HEROUI_PRO_ARCHIVE:?Provide the path to your licensed HeroUI Pro tar.gz archive}

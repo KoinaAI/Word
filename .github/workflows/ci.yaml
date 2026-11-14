@@ -1,0 +1,109 @@
+name: Focused checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  merge_group:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.paths.outputs.backend }}
+      web: ${{ steps.paths.outputs.web }}
+      container: ${{ steps.paths.outputs.container }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          base="${PR_BASE:-${QUEUE_BASE:-$BEFORE}}"
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+            base=$(git hash-object -t tree /dev/null)
+          else
+            git cat-file -e "$base"
+          fi
+          git diff --name-only "$base" HEAD > /tmp/changed
+          backend=false; web=false; container=false
+          if grep -Eq '^(backend/|.github/workflows/)' /tmp/changed; then backend=true; fi
+          if grep -Eq '^(web/|.github/workflows/)' /tmp/changed; then web=true; fi
+          if grep -Eq '^(Dockerfile|compose.*yaml|.dockerignore|.github/workflows/)' /tmp/changed; then container=true; fi
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - working-directory: backend
+        run: go test ./internal/app && go build ./cmd/server
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.3'
+      - working-directory: web
+        run: npm ci --ignore-scripts
+      - name: Restore licensed Pro components
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
+        working-directory: web
+        run: npx --yes hpsetup@4.8.0 react --auto
+      - name: Build web
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: web
+        run: npm run build
+      - name: Check dependency lockfile on external contributions
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: echo 'External contributions receive dependency installation validation; licensed builds run on trusted branches.'
+  container-config:
+    needs: changes
+    if: needs.changes.outputs.container == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - run: ADMIN_PASSWORD=ci-config-validation docker compose config --quiet
+  checks:
+    if: always()
+    needs: [changes, backend, web, container-config]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          BACKEND_REQUIRED: ${{ needs.changes.outputs.backend }}
+          WEB_REQUIRED: ${{ needs.changes.outputs.web }}
+          CONTAINER_REQUIRED: ${{ needs.changes.outputs.container }}
+          BACKEND: ${{ needs.backend.result }}
+          WEB: ${{ needs.web.result }}
+          CONTAINER: ${{ needs.container-config.result }}
+        run: |
+          test "$CHANGES" = success
+          if [ "$BACKEND_REQUIRED" = true ]; then test "$BACKEND" = success; fi
+          if [ "$WEB_REQUIRED" = true ]; then test "$WEB" = success; fi
+          if [ "$CONTAINER_REQUIRED" = true ]; then test "$CONTAINER" = success; fi

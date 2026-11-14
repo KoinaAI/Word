@@ -1,0 +1,96 @@
+name: Release image
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.event.created && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Verify version and integrated candidate
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor HEAD origin/main
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.7'
+          cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.22.3'
+      - name: Validate backend for release
+        working-directory: backend
+        run: go test -race ./... && go vet ./...
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --ignore-scripts
+      - name: Install licensed Pro package
+        working-directory: web
+        env:
+          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
+        run: npx --yes hpsetup@4.8.0 react --auto
+      - name: Build frontend and prepare private build input
+        run: |
+          npm run build --prefix web
+          tar -czf "$RUNNER_TEMP/heroui-pro.tgz" -C web/node_modules/@heroui-pro/react .
+      - name: Build and test image
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          docker build --secret id=heroui_pro_archive,src="$RUNNER_TEMP/heroui-pro.tgz" --build-arg VCS_REF="$REVISION" --build-arg VERSION="$VERSION" -t word:candidate .
+          docker run -d --name word-check -p 127.0.0.1:18080:8080 -e ADMIN_PASSWORD=release-check-only-password word:candidate
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health && break || sleep 1; done
+          python3 scripts/container-smoke.py http://127.0.0.1:18080
+          docker stop --time 15 word-check
+          test "$(docker inspect -f '{{.State.ExitCode}}' word-check)" = 0
+      - name: Publish tested image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVISION: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          image=ghcr.io/koinaai/word
+          for tag in "$VERSION" "sha-$REVISION"; do
+            if docker manifest inspect "$image:$tag" >/dev/null 2>&1; then
+              echo "Refusing to overwrite existing immutable tag: $tag"; exit 1
+            fi
+          done
+          docker tag word:candidate "$image:$VERSION"
+          docker tag word:candidate "$image:sha-$REVISION"
+          docker push "$image:$VERSION"
+          docker push "$image:sha-$REVISION"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$VERSION")
+          echo "IMAGE_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify registry artifact
+        run: |
+          docker pull "$IMAGE_DIGEST"
+          docker rm word-check
+          docker run -d --name word-pull-check -p 127.0.0.1:18080:8080 -e ADMIN_PASSWORD=release-check-only-password "$IMAGE_DIGEST"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/health && break || sleep 1; done
+          python3 scripts/container-smoke.py http://127.0.0.1:18080
+          docker stop --time 15 word-pull-check
+          test "$(docker inspect -f '{{.State.ExitCode}}' word-pull-check)" = 0
+      - if: always()
+        run: |
+          docker logs word-check 2>/dev/null || true
+          docker logs word-pull-check 2>/dev/null || true
+          docker rm -f word-check word-pull-check 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/heroui-pro.tgz"
