@@ -3,32 +3,53 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Card, Chip } from '@heroui/react'
 import { ArrowRight, BookOpen, Thunderbolt, ArrowsRotateRight, Check, Flame, Clock, ChartColumn, Bookmark } from '@gravity-ui/icons'
 import { api, useUser } from '@/lib/api'
-import type { Book, Stats } from '@/lib/types'
+import type { Book, Stats, Word } from '@/lib/types'
 import { ActivityChart, BookCard, BookCover, Failure, Loading, PageHeading, Progress, Stat } from '@/components/shared'
+import './home-library.css'
 
 export function HomePage() {
   const navigate = useNavigate()
   const { data: user } = useUser()
   const books = useQuery({ queryKey: ['books'], queryFn: () => api<Book[]>('/books') })
   const stats = useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })
+  const selectedBook = books.data?.find(item => item.id === user?.activeBookId) || books.data?.[0]
+  const current = useQuery({
+    queryKey: ['books', String(selectedBook?.id)],
+    queryFn: () => api<{ book: Book; words: Word[] }>(`/books/${selectedBook!.id}`),
+    enabled: Boolean(selectedBook),
+  })
   if (books.isPending || stats.isPending) return <Loading />
   if (books.error || stats.error) return <Failure error={books.error || stats.error} retry={() => { void books.refetch(); void stats.refetch() }} />
-  const book = books.data.find(item => item.id === user?.activeBookId) || books.data[0]
+  const book = current.data?.book || selectedBook
   const summary = stats.data
   const hour = new Date().getHours()
   const greeting = hour < 11 ? '早上好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
   const target = user?.dailyGoal || 20
+  const newCount = current.data?.words.filter(word => word.status === 'new').length
+  const reinforceCount = current.data?.words.filter(word => word.reinforce).length || 0
+  const allMastered = Boolean(book && book.wordCount > 0 && book.learnedCount === book.wordCount)
+  const reviewBook = book?.dueCount ? book : books.data.find(item => item.dueCount > 0)
+  const hasReview = Boolean(reviewBook) || summary.due > 0
+  const reviewCount = reviewBook?.dueCount || summary.due
+  const newRoundCount = Math.min(newCount || 0, target)
+  const nextAction = hasReview
+    ? { title: `先复习 ${reviewCount} 个到期词`, description: reviewBook ? `来自《${reviewBook.title}》。先把已经学过的词记牢，再开始新的一组。` : '有单词需要回顾，选择一本词书开始复习。', label: '开始复习', route: reviewBook ? `/study/${reviewBook.id}/review` : '/review' }
+    : newRoundCount > 0 && book
+      ? { title: `学一组新词，今天从 ${newRoundCount} 个开始`, description: `《${book.title}》还有 ${newCount} 个未学词。用英译中、中译英练习，一步步记牢。`, label: '开始学新词', route: `/study/${book.id}/learn` }
+      : reinforceCount > 0 && book
+        ? { title: `再巩固 ${reinforceCount} 个模糊的词`, description: '这些词曾在速刷中犹豫过，现在可以再回想一次。', label: '开始巩固', route: `/study/${book.id}/reinforce` }
+        : { title: allMastered ? '这本词书，已经全部掌握' : book ? '按自己的节奏，稳稳往前走' : '选一本词书，开始今天的学习', description: allMastered ? '暂时没有到期复习。可以查看掌握进度，或开始下一本词书。' : book ? current.isPending ? '正在读取当前词书的学习进度…' : current.error ? '暂时无法读取新词进度，可以进入词书查看。' : '当前没有未学词。已学过的词会按计划安排复习。' : '找到适合你的目标，从一小组单词开始。', label: book ? '查看当前词书' : '选择词书', route: book ? `/books/${book.id}` : '/books' }
   const examDays = user?.examDate ? Math.ceil((new Date(`${user.examDate.slice(0,10)}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000) : null
-  return <div className="page-stack"><PageHeading eyebrow="每一天，都离目标更近一点" title={`${greeting}，今天也一起进步。`} description="把大目标拆成小小的每一天，让记住变得自然而然。" action={<Button variant="outline" onPress={() => navigate('/settings')}><CalendarIcon />{examDays !== null && examDays >= 0 ? `距离目标考试 ${examDays} 天` : '我的学习计划'}</Button>} />
-    <section className="hero-grid"><Card className="daily-hero"><div className="hero-copy"><Chip color="success" variant="soft" className="w-fit"><span className="status-dot" /> 今日学习</Chip><h2>让每一个单词，<br />成为你的<span>底气。</span></h2><p>不必一口气走很远。今天，先记住 {target} 个新可能。</p><div className="hero-actions"><Button onPress={() => navigate(book ? `/study/${book.id}/learn` : '/books')}>开始今日学习 <ArrowRight /></Button><span>{summary.today >= target ? '今日目标已完成，继续保持' : `今日已学习 ${summary.today} / ${target} 词`}</span></div></div><div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="art-dots" /><div className="flashcard flashcard-back"><span>little by little</span></div><div className="flashcard flashcard-front"><span className="flashcard-label">One word at a time.</span><strong>possibility</strong><span className="flashcard-phonetic">/ˌpɒsəˈbɪləti/</span><div className="flashcard-line" /><p>n. 可能性；机会</p><span className="flashcard-check"><Check /></span></div><span className="art-spark art-spark-one">✦</span><span className="art-spark art-spark-two">✦</span></div></Card>
-      <Card className="sprint-promo"><div className="promo-icon"><Thunderbolt /></div><div><p className="eyebrow">考前，把时间用在刀刃上</p><h2>临考速刷</h2><p>会的轻松跳过，模糊的重点巩固。<br />只为还没掌握的单词停留。</p></div><Button variant="outline" onPress={() => navigate('/sprint')}>进入速刷 <ArrowRight /></Button><span className="sprint-decoration" aria-hidden="true">↗</span></Card></section>
-    <section className="stats-grid"><Stat title="累计掌握" value={summary.learned} foot="每个单词，都是一份积累" icon={<BookOpen />} /><Stat title="待复习单词" value={summary.due} foot={summary.due > 0 ? '趁记忆还在，及时唤醒' : '没有到期复习，轻松前进'} icon={<ArrowsRotateRight />} /><Stat title="连续学习" value={summary.streak} foot="天 · 小习惯带来大改变" icon={<Flame />} /><Stat title="今日已学习" value={summary.today} foot={`每日目标 ${target} 词`} icon={<Check />} /></section>
-    <section className="dashboard-middle"><Card className="current-book"><Card.Header className="section-card-header"><Card.Title>正在学习</Card.Title><Button size="sm" variant="ghost" onPress={() => navigate('/books')}>切换词书 <ArrowRight /></Button></Card.Header><Card.Content>{book ? <div className="current-book-body"><BookCover book={book} small /><div className="current-book-info"><Chip size="sm" variant="soft">{book.category}</Chip><h3>{book.title}</h3><p>{book.subtitle}</p><div className="progress-copy"><span>已掌握 {book.learnedCount} 词</span><span>{book.wordCount > 0 ? Math.round(book.learnedCount / book.wordCount * 100) : 0}%</span></div><Progress label="词书掌握进度" value={book.wordCount ? book.learnedCount / book.wordCount * 100 : 0} /><div className="flex gap-3 mt-5"><Button size="sm" onPress={() => navigate(`/study/${book.id}/learn`)}>继续学习 <ArrowRight /></Button><Button size="sm" variant="ghost" onPress={() => navigate(`/books/${book.id}`)}>查看词书</Button></div></div></div> : <p className="text-muted py-8">词书正在准备中，请稍后再来。</p>}</Card.Content></Card><Card className="activity-card"><Card.Header className="section-card-header"><Card.Title>学习的每一步</Card.Title><span className="text-xs text-muted">最近 14 天 · UTC</span></Card.Header><Card.Content><ActivityChart activity={summary.activity.slice(-14)} /></Card.Content></Card></section>
-    <section><div className="section-heading"><div><h2>遇见你的下一本词书</h2><p>从一个小目标开始，慢慢拓宽你的世界。</p></div><Button variant="ghost" size="sm" onPress={() => navigate('/books')}>全部词书 <ArrowRight /></Button></div><div className="book-grid-home">{books.data.filter(item => item.id !== book?.id).slice(0, 4).map(item => <BookCard key={item.id} book={item} onOpen={() => navigate(`/books/${item.id}`)} />)}</div></section>
-    <footer className="page-footer"><Bookmark /><span>记忆会遗忘，努力会留下。今天的你，又向前了一点。</span></footer>
+  return <div className="page-stack home-page"><PageHeading eyebrow="今日学习" title={`${greeting}，开始今天的一小步`} description="先复习到期词，再学一组新词。" action={<Button variant="outline" onPress={() => navigate('/settings')}><Clock />{examDays !== null && examDays >= 0 ? `距离考试 ${examDays} 天` : '学习计划'}</Button>} />
+    <section className="home-focus-grid" aria-label="今日学习任务">
+      <Card className="today-task"><Card.Header><Chip color="success" variant="soft" className="w-fit">{hasReview ? '优先复习' : newRoundCount > 0 ? '学新词' : '下一步'}</Chip><Card.Title>{nextAction.title}</Card.Title><Card.Description>{nextAction.description}</Card.Description></Card.Header><Card.Content><div className="round-plan"><BookOpen /><span>每轮新词数量 <strong>最多 {target} 词</strong></span><Button size="sm" variant="ghost" onPress={() => navigate('/settings')}>调整</Button></div></Card.Content><Card.Footer><Button isPending={!hasReview && Boolean(book) && current.isPending} onPress={() => navigate(nextAction.route)}>{nextAction.label}<ArrowRight /></Button>{hasReview && newRoundCount > 0 && book ? <Button variant="ghost" onPress={() => navigate(`/study/${book.id}/learn`)}>学新词</Button> : book && <Button variant="ghost" onPress={() => navigate('/books')}>换本词书</Button>}</Card.Footer></Card>
+      <Card className="home-current-book"><Card.Header className="section-card-header"><Card.Title>当前词书</Card.Title><Button size="sm" variant="ghost" onPress={() => navigate(book ? `/books/${book.id}` : '/books')}>{book ? '查看词书' : '选择词书'}<ArrowRight /></Button></Card.Header><Card.Content>{book ? <><div className="home-book-summary"><BookCover book={book} small /><div><Chip size="sm" color="success" variant="soft">{allMastered ? '已全部掌握' : '在学'}</Chip><h3>{book.title}</h3><p>{book.subtitle}</p><span>{book.wordCount} 词{book.dueCount > 0 && ` · ${book.dueCount} 词待复习`}</span></div></div><div className="learning-progress-copy"><span>已掌握 {book.learnedCount} / {book.wordCount} 词</span><strong>{book.wordCount ? Math.round(book.learnedCount / book.wordCount * 100) : 0}%</strong></div><Progress label="当前词书掌握进度" value={book.wordCount ? book.learnedCount / book.wordCount * 100 : 0} /></> : <p className="library-muted">选好词书后，这里会显示你的学习进度。</p>}</Card.Content></Card>
+    </section>
+    <section className="stats-grid" aria-label="学习数据"><Stat title="今日已练习" value={summary.today} foot="词 · 各模式合并去重（UTC）" icon={<Check />} /><Stat title="累计掌握" value={summary.learned} foot="词 · 已掌握的词汇" icon={<BookOpen />} /><Stat title="待复习" value={summary.due} foot={summary.due > 0 ? '词 · 已到复习时间' : '词 · 暂时没有到期复习'} icon={<ArrowsRotateRight />} /><Stat title="连续学习" value={summary.streak} foot="天 · 保持自己的节奏" icon={<Flame />} /></section>
+    <section className="home-practice-grid"><Card className="activity-card"><Card.Header className="section-card-header"><div><Card.Title>最近的学习节奏</Card.Title><Card.Description>最近 14 天 · 学习与复习次数 · UTC</Card.Description></div><Button size="sm" variant="ghost" onPress={() => navigate('/statistics')}>全部记录<ArrowRight /></Button></Card.Header><Card.Content><ActivityChart activity={summary.activity.slice(-14)} /></Card.Content></Card><Card className="home-sprint-card"><Card.Header><span className="home-sprint-icon"><Thunderbolt /></span><Card.Title>考前，快速过一遍</Card.Title><Card.Description>会的标记掌握，不确定的看释义后再决定，集中巩固模糊的词。</Card.Description></Card.Header><Card.Footer><Button variant="outline" onPress={() => navigate('/sprint')}>进入临考速刷<ArrowRight /></Button></Card.Footer></Card></section>
+    {books.data.some(item => item.id !== book?.id) && <section><div className="section-heading"><div><h2>下一本，学什么</h2><p>根据考试或学习目标，找到适合自己的词书。</p></div><Button variant="ghost" size="sm" onPress={() => navigate('/books')}>全部词书 <ArrowRight /></Button></div><div className="book-grid-home">{books.data.filter(item => item.id !== book?.id).slice(0, 3).map(item => <BookCard key={item.id} book={item} onOpen={() => navigate(`/books/${item.id}`)} />)}</div></section>}
   </div>
 }
-function CalendarIcon() { return <Clock /> }
 
 export function StatisticsPage() {
   const stats = useQuery({ queryKey: ['stats'], queryFn: () => api<Stats>('/stats') })

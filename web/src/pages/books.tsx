@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Chip, Input } from '@heroui/react'
@@ -10,6 +10,17 @@ import { api, json, useRefresh, useUser } from '@/lib/api'
 import { pronounce } from '@/lib/speech'
 import type { Book, User, Word } from '@/lib/types'
 import { BookCard, BookCover, Empty, Failure, IconButton, Loading, PageHeading, Progress } from '@/components/shared'
+import './home-library.css'
+
+type BookDetail = { book: Book; words: Word[] }
+type WordFilter = 'all' | 'new' | 'learning' | 'mastered' | 'reinforce'
+const wordFilters: { id: WordFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'new', label: '未学' },
+  { id: 'learning', label: '学习中' },
+  { id: 'mastered', label: '已掌握' },
+  { id: 'reinforce', label: '待巩固' },
+]
 
 export function BooksPage() {
   const [search, setSearch] = useState('')
@@ -17,11 +28,20 @@ export function BooksPage() {
   const navigate = useNavigate()
   const { data: user } = useUser()
   const books = useQuery({ queryKey: ['books'], queryFn: () => api<Book[]>('/books') })
+  const activeBook = books.data?.find(book => book.id === user?.activeBookId)
+  const current = useQuery({ queryKey: ['books', String(activeBook?.id)], queryFn: () => api<BookDetail>(`/books/${activeBook!.id}`), enabled: Boolean(activeBook) })
   if (books.isPending) return <Loading />
   if (books.error) return <Failure error={books.error} retry={books.refetch} />
+  const currentBook = current.data?.book || activeBook
+  const currentNewCount = current.data?.words.filter(word => word.status === 'new').length || 0
+  const currentReinforceCount = current.data?.words.filter(word => word.reinforce).length || 0
+  const currentAction = currentBook?.dueCount ? { label: '继续复习', route: `/study/${currentBook.id}/review` } : currentNewCount > 0 ? { label: '继续学新词', route: `/study/${currentBook?.id}/learn` } : currentReinforceCount > 0 ? { label: '继续巩固', route: `/study/${currentBook?.id}/reinforce` } : { label: '查看词书', route: `/books/${currentBook?.id}` }
   const categories = ['全部', ...new Set(books.data.map(book => book.category))]
-  const filtered = books.data.filter(book => (category === '全部' || book.category === category) && `${book.title}${book.subtitle}${book.description}`.toLowerCase().includes(search.toLowerCase()))
-  return <div className="page-stack"><PageHeading eyebrow="选一本，开启新的可能" title="你的词汇世界，从这里开始" description="考试、留学，或只是想看懂更大的世界，总有一本适合你。" /><div className="filter-toolbar"><div className="overflow-x-auto max-w-full"><Segment aria-label="词书分类" selectedKey={category} onSelectionChange={key => setCategory(String(key))} className="w-max">{categories.map(item => <Segment.Item id={item} key={item}>{item}</Segment.Item>)}</Segment></div><div className="search-field"><Magnifier /><Input aria-label="搜索词书" placeholder="搜索词书…" value={search} onChange={event => setSearch(event.target.value)} /></div></div><div className="flex justify-between text-sm text-muted"><span>{filtered.length} 本精选词书</span><span>可在后台导入完整词库</span></div>{filtered.length ? <div className="book-library-grid">{filtered.map(book => <BookCard key={book.id} book={book} selected={user?.activeBookId === book.id} onOpen={() => navigate(`/books/${book.id}`)} />)}</div> : <Empty title="还没找到这本词书" description="试试其他关键词，或切换到全部分类。" action={<Button variant="secondary" onPress={() => { setSearch(''); setCategory('全部') }}>清除筛选</Button>} />}</div>
+  const filtered = books.data.filter(book => (category === '全部' || book.category === category) && `${book.title}${book.subtitle}${book.description}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const clearFilters = () => { setSearch(''); setCategory('全部') }
+  return <div className="page-stack library-page"><PageHeading eyebrow="词书" title="选一本，学得更专注" description="按学习目标选择词书，也可以随时回到正在学的那一本。" />
+    {currentBook && <Card className="library-current"><div className="library-current-summary"><BookCover book={currentBook} small /><div><span className="library-current-label">当前词书</span><h2>{currentBook.title}</h2><p>已掌握 {currentBook.learnedCount} / {currentBook.wordCount} 词{currentBook.dueCount > 0 ? ` · ${currentBook.dueCount} 词待复习` : currentNewCount > 0 ? ` · ${currentNewCount} 词未学` : ''}</p><Progress label="当前词书掌握进度" value={currentBook.wordCount ? currentBook.learnedCount / currentBook.wordCount * 100 : 0} /></div></div><Button variant="outline" isPending={current.isPending && !currentBook.dueCount} onPress={() => navigate(currentAction.route)}>{currentAction.label}<ArrowRight /></Button></Card>}
+    <section className="library-catalog" aria-label="选择词书"><div className="filter-toolbar"><div className="library-filter-scroll"><Segment aria-label="词书分类" selectedKey={category} onSelectionChange={key => setCategory(String(key))} className="library-segment">{categories.map(item => <Segment.Item id={item} key={item}>{item}</Segment.Item>)}</Segment></div><div className="search-field"><Magnifier /><Input aria-label="搜索词书" placeholder="搜索词书…" value={search} onChange={event => setSearch(event.target.value)} /></div></div><div className="library-results"><span aria-live="polite">共 {filtered.length} 本词书</span>{(search || category !== '全部') && <Button size="sm" variant="ghost" onPress={clearFilters}>清除筛选</Button>}</div>{filtered.length ? <div className="book-library-grid">{filtered.map(book => <BookCard key={book.id} book={book} selected={user?.activeBookId === book.id} onOpen={() => navigate(`/books/${book.id}`)} />)}</div> : <Empty title="还没找到这本词书" description="试试其他关键词，或切换到全部分类。" action={<Button variant="secondary" onPress={clearFilters}>清除筛选</Button>} />}</section></div>
 }
 
 export function BookDetailPage() {
@@ -30,17 +50,44 @@ export function BookDetailPage() {
   const client = useQueryClient()
   const { data: user } = useUser()
   const [search, setSearch] = useState('')
-  const [pending, setPending] = useState(false)
-  const detail = useQuery({ queryKey: ['books', bookId], queryFn: () => api<{book: Book; words: Word[]}>(`/books/${bookId}`) })
+  const [filter, setFilter] = useState<WordFilter>('all')
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const actionLock = useRef(false)
+  const activeRequest = useRef<object | null>(null)
+  useEffect(() => {
+    setPendingAction(null)
+    return () => { activeRequest.current = null; actionLock.current = false }
+  }, [bookId])
+  const detail = useQuery({ queryKey: ['books', bookId], queryFn: () => api<BookDetail>(`/books/${bookId}`) })
   if (detail.isPending) return <Loading />
   if (detail.error) return <Failure error={detail.error} retry={detail.refetch} />
   const { book, words } = detail.data
-  const setActive = async () => {
-    setPending(true)
-    try { const updated = await api<User>('/me', json('PATCH', { activeBookId: book.id })); client.setQueryData(['me'], updated); toast.success('已设为当前词书') }
-    catch (e) { toast.error((e as Error).message) } finally { setPending(false) }
+  const counts: Record<WordFilter, number> = { all: words.length, new: 0, learning: 0, mastered: 0, reinforce: 0 }
+  for (const word of words) { counts[word.status]++; if (word.reinforce) counts.reinforce++ }
+  const filteredWords = words.filter(word => (filter === 'all' || (filter === 'reinforce' ? word.reinforce : word.status === filter)) && `${word.text}${word.meaning}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const clearFilters = () => { setSearch(''); setFilter('all') }
+  const chooseBook = async (mode?: 'learn' | 'review' | 'sprint' | 'reinforce') => {
+    if (actionLock.current) return
+    actionLock.current = true
+    const request = {}
+    activeRequest.current = request
+    setPendingAction(mode || 'select')
+    try {
+      if (user?.activeBookId !== book.id) {
+        const updated = await api<User>('/me', json('PATCH', { activeBookId: book.id }))
+        client.setQueryData(['me'], updated)
+      }
+      if (activeRequest.current !== request) return
+      if (mode) navigate(`/study/${book.id}/${mode}`)
+      else toast.success('已设为当前词书')
+    } catch (e) { if (activeRequest.current === request) toast.error((e as Error).message) }
+    finally {
+      if (activeRequest.current === request) { activeRequest.current = null; actionLock.current = false; setPendingAction(null) }
+    }
   }
-  return <div className="page-stack"><Button variant="ghost" size="sm" className="self-start" onPress={() => navigate('/books')}><ArrowLeft />全部词书</Button><div className="book-detail-hero"><BookCover book={book} /><div><Chip variant="soft">{book.category} · 精选词书</Chip><h1>{book.title}</h1><p>{book.description}</p><div className="book-detail-counts"><span><strong>{book.wordCount}</strong> 个单词</span><span><strong>{book.learnedCount}</strong> 已掌握</span><span><strong>{book.dueCount}</strong> 待复习</span></div><Progress label="词书进度" value={book.wordCount ? book.learnedCount / book.wordCount * 100 : 0} /><div className="flex flex-wrap gap-3 mt-6"><Button onPress={() => navigate(`/study/${book.id}/learn`)}>开始学习 <ArrowRight /></Button><Button variant="outline" onPress={() => navigate(`/study/${book.id}/sprint`)}><Thunderbolt />临考速刷</Button><Button variant="ghost" isDisabled={user?.activeBookId === book.id} isPending={pending} onPress={() => { void setActive() }}>{user?.activeBookId === book.id ? '当前词书' : '设为当前词书'}</Button></div></div></div><div className="section-heading"><div><h2>词书内容</h2><p>先认识一下，即将成为老朋友的单词。</p></div><Input aria-label="搜索单词" placeholder="搜索单词或释义…" className="max-w-64" value={search} onChange={event => setSearch(event.target.value)} /></div><WordList words={words.filter(word => `${word.text}${word.meaning}`.toLowerCase().includes(search.toLowerCase()))} /></div>
+  return <div className="page-stack library-page book-detail-page"><Button variant="ghost" size="sm" className="self-start" onPress={() => navigate('/books')}><ArrowLeft />全部词书</Button>
+    <section className="book-overview"><BookCover book={book} /><div className="book-overview-copy"><div className="book-overview-labels"><Chip variant="soft">{book.category}</Chip>{user?.activeBookId === book.id && <Chip color="success" variant="soft">当前词书</Chip>}</div><h1>{book.title}</h1><p>{book.description}</p><div className="book-overview-counts"><span><strong>{book.wordCount}</strong>个单词</span><span><strong>{book.learnedCount}</strong>已掌握</span><span><strong>{book.dueCount}</strong>到期复习</span></div><div className="learning-progress-copy"><span>掌握进度</span><strong>{book.wordCount ? Math.round(book.learnedCount / book.wordCount * 100) : 0}%</strong></div><Progress label="词书掌握进度" value={book.wordCount ? book.learnedCount / book.wordCount * 100 : 0} /><div className="book-learning-actions"><Button variant={book.dueCount > 0 ? 'outline' : 'primary'} isDisabled={counts.new === 0 || pendingAction !== null} isPending={pendingAction === 'learn'} onPress={() => { void chooseBook('learn') }}><BookOpen />{counts.new ? `学新词 · ${Math.min(counts.new, user?.dailyGoal || 20)} 词` : '新词已学完'}</Button><Button variant={book.dueCount > 0 ? 'primary' : 'outline'} isDisabled={book.dueCount === 0 || pendingAction !== null} isPending={pendingAction === 'review'} onPress={() => { void chooseBook('review') }}><ArrowsRotateRight />{book.dueCount ? `到期复习 · ${book.dueCount} 词` : '暂无到期复习'}</Button></div><div className="book-secondary-actions"><Button variant="ghost" isDisabled={pendingAction !== null || book.wordCount === 0} isPending={pendingAction === 'sprint'} onPress={() => { void chooseBook('sprint') }}><Thunderbolt />临考速刷</Button>{counts.reinforce > 0 && <Button variant="ghost" isDisabled={pendingAction !== null} isPending={pendingAction === 'reinforce'} onPress={() => { void chooseBook('reinforce') }}>巩固 {counts.reinforce} 词</Button>}{user?.activeBookId !== book.id && <Button variant="ghost" isDisabled={pendingAction !== null} isPending={pendingAction === 'select'} onPress={() => { void chooseBook() }}>设为当前词书</Button>}</div></div></section>
+    <section className="book-word-section" aria-labelledby="book-content-title"><div className="section-heading"><div><h2 id="book-content-title">词书内容</h2><p>按掌握情况，找到接下来要练的词。</p></div><div className="search-field"><Magnifier /><Input aria-label="搜索单词或释义" placeholder="搜索单词或释义…" value={search} onChange={event => setSearch(event.target.value)} /></div></div><div className="library-filter-scroll"><Segment aria-label="单词学习状态" selectedKey={filter} onSelectionChange={key => setFilter(key as WordFilter)} className="library-segment word-state-segment">{wordFilters.map(item => <Segment.Item id={item.id} key={item.id} aria-label={`${item.label} ${counts[item.id]} 词`}><span>{item.label}</span><span className="word-filter-count">{counts[item.id]}</span></Segment.Item>)}</Segment></div><div className="library-results"><span aria-live="polite">显示 {filteredWords.length} / {words.length} 词{filter === 'reinforce' && ' · 曾在速刷中犹豫的词'}</span>{(search || filter !== 'all') && <Button size="sm" variant="ghost" aria-label="清空搜索和状态筛选" onPress={clearFilters}>清空筛选</Button>}</div>{filteredWords.length > 0 ? <WordList words={filteredWords} /> : <Empty title={search ? '没有找到匹配的单词' : filter === 'all' ? '这本词书暂时没有单词' : `暂时没有${wordFilters.find(item => item.id === filter)?.label}的单词`} description={search ? '试试单词的一部分，或搜索中文释义。' : filter === 'reinforce' ? '速刷中选“不确定”，看释义后认出的词会出现在这里。' : '可以切换其他学习状态查看。'} action={(search || filter !== 'all') ? <Button variant="secondary" onPress={clearFilters}>查看全部单词</Button> : undefined} />}</section></div>
 }
 
 export function WordList({ words }: { words: Word[] }) {
