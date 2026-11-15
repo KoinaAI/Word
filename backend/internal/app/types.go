@@ -36,6 +36,8 @@ type Word struct {
 	Status         string `json:"status"`
 	Reinforce      bool   `json:"reinforce"`
 	DueAt          string `json:"dueAt,omitempty"`
+	LearnStage     int    `json:"learnStage"`
+	LearnRevision  int64  `json:"learnRevision"`
 }
 
 type Navigation struct {

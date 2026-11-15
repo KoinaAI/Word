@@ -94,7 +94,7 @@
 .library-page .filter-toolbar { gap: 20px; }
 .library-filter-scroll { max-width: 100%; overflow-x: auto; padding: 2px; scrollbar-width: thin; scrollbar-color: var(--surface-tertiary) transparent; }
 .library-page .library-segment { width: max-content; max-width: none; padding: 4px; border-radius: 12px; }
-.library-page .library-segment .segment__item { min-height: 44px; font-size: 13px; padding: 0 15px; border-radius: 9px; white-space: nowrap; }
+.library-page .library-segment .segment__item { min-height: 44px; font-size: 13px; padding: 0 15px; border-radius: 8px; white-space: nowrap; }
 .library-page .search-field { min-width: 220px; }
 .library-page .search-field > svg { top: 15px; }
 .library-page .search-field input { height: 44px; font-size: 14px; padding-left: 36px; }

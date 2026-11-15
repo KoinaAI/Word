@@ -12,7 +12,7 @@ import (
 )
 
 const bookColumns = `SELECT b.id,b.title,b.subtitle,b.description,b.category,b.color,COUNT(w.id),COALESCE(SUM(CASE WHEN p.status='mastered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN p.due_at<>'' AND p.due_at<=? THEN 1 ELSE 0 END),0) FROM books b LEFT JOIN words w ON w.book_id=b.id LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? `
-const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,'') FROM words w LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? `
+const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0) FROM words w LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
 
 type scanner interface{ Scan(...any) error }
 
@@ -23,7 +23,7 @@ func scanBook(s scanner) (Book, error) {
 }
 func scanWord(s scanner) (Word, error) {
 	w := Word{}
-	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt)
+	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt, &w.LearnStage, &w.LearnRevision)
 	return w, e
 }
 func currentID(r *http.Request) int64 {
@@ -36,7 +36,7 @@ func (a *App) readBook(ctx context.Context, id, userID int64) (Book, error) {
 	return scanBook(a.db.QueryRowContext(ctx, bookColumns+"WHERE b.id=? GROUP BY b.id", stamp(time.Now()), userID, id))
 }
 func (a *App) readWords(ctx context.Context, userID int64, where string, args ...any) ([]Word, error) {
-	params := []any{userID, userID}
+	params := []any{userID, userID, userID}
 	params = append(params, args...)
 	rows, e := a.db.QueryContext(ctx, wordColumns+where, params...)
 	if e != nil {
@@ -214,10 +214,12 @@ func nextMemory(old memoryState, mode, answer string, now time.Time) (memoryStat
 }
 func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		WordID  int64  `json:"wordId"`
-		Mode    string `json:"mode"`
-		Answer  string `json:"answer"`
-		EventID string `json:"eventId"`
+		WordID        int64  `json:"wordId"`
+		Mode          string `json:"mode"`
+		Answer        string `json:"answer"`
+		EventID       string `json:"eventId"`
+		LearnStage    *int   `json:"learnStage"`
+		LearnRevision *int64 `json:"learnRevision"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -230,6 +232,15 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "该模式不支持不确定评分")
 		return
 	}
+	if req.Mode == "learn" {
+		if req.LearnStage == nil || req.LearnRevision == nil || *req.LearnStage < 0 || *req.LearnStage > 1 || *req.LearnRevision < 0 || *req.LearnRevision >= 9007199254740991 {
+			fail(w, 400, "新词练习需要有效的阶段进度，请刷新学习页面")
+			return
+		}
+	} else if req.LearnStage != nil || req.LearnRevision != nil {
+		fail(w, 400, "只有新词练习支持阶段进度")
+		return
+	}
 	u := userFrom(r)
 	tx, e := a.db.BeginTx(r.Context(), nil)
 	if e != nil {
@@ -237,15 +248,30 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var previousWord int64
+	var previousID, previousWord int64
 	var previousMode, previousAnswer string
-	e = tx.QueryRow("SELECT submitted_word_id,mode,answer FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousWord, &previousMode, &previousAnswer)
+	e = tx.QueryRow("SELECT id,submitted_word_id,mode,answer FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousID, &previousWord, &previousMode, &previousAnswer)
 	if e == nil {
 		if previousWord != req.WordID || previousMode != req.Mode || previousAnswer != req.Answer {
 			fail(w, 409, "记录编号已用于其他评分")
 			return
 		}
-		writeJSON(w, 200, map[string]bool{"ok": true})
+		if req.Mode == "learn" {
+			var stage, resultStage int
+			var revision, resultRevision int64
+			e = tx.QueryRow("SELECT request_stage,request_revision,result_stage,result_revision FROM learn_answer_steps WHERE answer_id=?", previousID).Scan(&stage, &revision, &resultStage, &resultRevision)
+			if errors.Is(e, sql.ErrNoRows) || (e == nil && (stage != *req.LearnStage || revision != *req.LearnRevision)) {
+				fail(w, 409, "记录编号已用于其他阶段，请刷新学习页面")
+				return
+			}
+			if e != nil {
+				internal(w, e)
+				return
+			}
+			writeLearnResult(w, resultStage, resultRevision)
+		} else {
+			writeJSON(w, 200, map[string]bool{"ok": true})
+		}
 		return
 	} else if !errors.Is(e, sql.ErrNoRows) {
 		internal(w, e)
@@ -284,23 +310,78 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	next, change := nextMemory(old, req.Mode, req.Answer, now)
+	var resultStage int
+	var resultRevision int64
+	next, change := old, false
+	if req.Mode == "learn" {
+		var stage int
+		var revision int64
+		e = tx.QueryRow("SELECT stage,revision FROM learn_progress WHERE user_id=? AND word_id=?", u.ID, req.WordID).Scan(&stage, &revision)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			internal(w, e)
+			return
+		}
+		if stage != *req.LearnStage || revision != *req.LearnRevision {
+			fail(w, 409, "这个单词的练习进度已更新，请刷新学习队列")
+			return
+		}
+		resultRevision = revision + 1
+		if req.Answer == "known" {
+			resultStage = stage + 1
+		}
+		if _, e = tx.Exec(`INSERT INTO learn_progress(user_id,word_id,stage,revision,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,word_id) DO UPDATE SET stage=excluded.stage,revision=excluded.revision,updated_at=excluded.updated_at`, u.ID, req.WordID, resultStage, resultRevision, stamp(now)); e != nil {
+			internal(w, e)
+			return
+		}
+		// A wrong answer restarts this word; only completing both directions schedules review.
+		if resultStage == 2 {
+			next, change = nextMemory(old, req.Mode, "known", now)
+		}
+	} else {
+		next, change = nextMemory(old, req.Mode, req.Answer, now)
+	}
 	if change {
 		_, e = tx.Exec(`INSERT INTO progress(user_id,word_id,status,reinforce,due_at,repetitions,interval_days,ease,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,word_id) DO UPDATE SET status=excluded.status,reinforce=excluded.reinforce,due_at=excluded.due_at,repetitions=excluded.repetitions,interval_days=excluded.interval_days,ease=excluded.ease,updated_at=excluded.updated_at`, u.ID, req.WordID, next.status, next.reinforce, next.due, next.repetitions, next.interval, next.ease, stamp(now))
 		if e != nil {
 			internal(w, e)
 			return
 		}
+		if req.Mode != "learn" {
+			// Keep revision monotonic when another mode moves a word out of and back into new learning.
+			if _, e = tx.Exec(`INSERT INTO learn_progress(user_id,word_id,stage,revision,updated_at) VALUES(?,?,0,1,?) ON CONFLICT(user_id,word_id) DO UPDATE SET stage=0,revision=learn_progress.revision+1,updated_at=excluded.updated_at`, u.ID, req.WordID, stamp(now)); e != nil {
+				internal(w, e)
+				return
+			}
+		}
 	}
-	if _, e = tx.Exec("INSERT INTO answers(user_id,word_id,submitted_word_id,word_text,word_meaning,mode,answer,event_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)", u.ID, req.WordID, req.WordID, text, meaning, req.Mode, req.Answer, req.EventID, stamp(now)); e != nil {
+	result, e := tx.Exec("INSERT INTO answers(user_id,word_id,submitted_word_id,word_text,word_meaning,mode,answer,event_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)", u.ID, req.WordID, req.WordID, text, meaning, req.Mode, req.Answer, req.EventID, stamp(now))
+	if e != nil {
 		internal(w, e)
 		return
+	}
+	if req.Mode == "learn" {
+		answerID, e := result.LastInsertId()
+		if e == nil {
+			_, e = tx.Exec("INSERT INTO learn_answer_steps(answer_id,request_stage,request_revision,result_stage,result_revision) VALUES(?,?,?,?,?)", answerID, *req.LearnStage, *req.LearnRevision, resultStage, resultRevision)
+		}
+		if e != nil {
+			internal(w, e)
+			return
+		}
 	}
 	if e = tx.Commit(); e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"ok": true})
+	if req.Mode == "learn" {
+		writeLearnResult(w, resultStage, resultRevision)
+	} else {
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	}
+}
+
+func writeLearnResult(w http.ResponseWriter, stage int, revision int64) {
+	writeJSON(w, 200, map[string]any{"ok": true, "learnStage": stage, "learnRevision": revision, "completed": stage == 2})
 }
 func (a *App) favorites(w http.ResponseWriter, r *http.Request) {
 	words, e := a.readWords(r.Context(), currentID(r), "WHERE EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?) ORDER BY w.id", currentID(r))
