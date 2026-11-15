@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Chip, Input, Label, Switch, TextField } from '@heroui/react'
-import { NativeSelect } from '@heroui-pro/react'
+import { NativeSelect } from '@heroui-pro/react/native-select'
 import { ArrowDown, ArrowUp } from '@gravity-ui/icons'
 import { toast } from 'sonner'
 import { Failure, IconButton, Loading, PageHeading } from '@/components/shared'

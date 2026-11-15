@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Chip, Input } from '@heroui/react'
-import { Segment, ListView } from '@heroui-pro/react'
+import { Segment } from '@heroui-pro/react/segment'
+import { ListView } from '@heroui-pro/react/list-view'
 import { ArrowRight, Thunderbolt, BookOpen, ArrowsRotateRight, Star, Volume, ArrowLeft, Magnifier, Check } from '@gravity-ui/icons'
 import { toast } from 'sonner'
 import { api, json, useRefresh, useUser } from '@/lib/api'
@@ -53,7 +54,7 @@ export function WordList({ words }: { words: Word[] }) {
     catch (e) { toast.error((e as Error).message) } finally { setBusy(null) }
   }
   if (!words.length) return <Empty title="这里暂时没有单词" description="开始学习或调整筛选，新的积累很快就会出现。" />
-  return <ListView aria-label="单词列表" variant="secondary" selectionMode="none" className="word-list">{words.map(word => <ListView.Item id={word.id} key={word.id} textValue={word.text}><ListView.ItemContent><div className="word-list-main"><ListView.Title>{word.text}<span className="phonetic-inline">{word.phonetic}</span></ListView.Title><ListView.Description>{word.meaning}</ListView.Description></div>{word.reinforce ? <Chip size="sm" color="warning" variant="soft">待巩固</Chip> : word.status === 'mastered' ? <Chip size="sm" color="success" variant="soft">已掌握</Chip> : null}</ListView.ItemContent><ListView.ItemAction><IconButton label={`播放 ${word.text} 发音`} onPress={() => pronounce(word.text)}><Volume /></IconButton><IconButton label={word.favorite ? `取消收藏 ${word.text}` : `收藏 ${word.text}`} isDisabled={busy !== null} className={word.favorite ? 'text-warning' : ''} onPress={() => { void toggle(word) }}><Star fill={word.favorite ? 'currentColor' : 'none'} /></IconButton></ListView.ItemAction></ListView.Item>)}</ListView>
+  return <ListView aria-label="单词列表" variant="secondary" selectionMode="none" className="word-list">{words.map(word => <ListView.Item id={word.id} key={word.id} textValue={word.text}><ListView.ItemContent><div className="word-list-main"><div className="word-list-heading"><ListView.Title lang="en">{word.text}</ListView.Title>{word.phonetic && <span className="phonetic-inline" lang="en">{word.phonetic}</span>}</div><ListView.Description>{word.meaning}</ListView.Description></div>{word.reinforce ? <Chip size="sm" color="warning" variant="soft">待巩固</Chip> : word.status === 'mastered' ? <Chip size="sm" color="success" variant="soft">已掌握</Chip> : null}</ListView.ItemContent><ListView.ItemAction><IconButton label={`播放 ${word.text} 发音`} onPress={() => pronounce(word.text)}><Volume /></IconButton><IconButton label={word.favorite ? `取消收藏 ${word.text}` : `收藏 ${word.text}`} isDisabled={busy !== null} className={word.favorite ? 'text-warning' : ''} onPress={() => { void toggle(word) }}><Star fill={word.favorite ? 'currentColor' : 'none'} /></IconButton></ListView.ItemAction></ListView.Item>)}</ListView>
 }
 
 export function FavoritesPage() {
