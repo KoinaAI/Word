@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { advanceQuizRound, createQuizQuestion, createQuizRound, normalizeSpelling, recordQuizAnswer, summarizeQuizRound } from '../src/lib/study-quiz.ts'
+import { advanceQuizRound, createQuizQuestion, createQuizRound, normalizeSpelling, quizProgress, recordQuizAnswer, summarizeQuizRound } from '../src/lib/study-quiz.ts'
 import type { Word } from '../src/lib/types.ts'
 
 const word = (id: number, text: string, meaning: string): Word => ({ id, text, meaning, bookId: 1, phonetic: '', example: '', exampleMeaning: '', favorite: false, status: 'new', reinforce: false })
@@ -72,4 +72,19 @@ test('successful correction is separate from first-pass learning statistics', ()
   round = advanceQuizRound(recordQuizAnswer(round, 'initial:1', false, vocabulary))
   round = recordQuizAnswer(round, 'correction:1', true, vocabulary)
   assert.deepEqual(summarizeQuizRound(round), { answered: 1, correct: 0, mistakes: 1, corrected: 1, correctionCount: 1 })
+})
+
+test('first-pass progress never grows its goal when mistakes add correction questions', () => {
+  let round = createQuizRound(vocabulary.slice(0, 2), vocabulary, stableRandom)
+  assert.deepEqual(quizProgress(round), { phase: 'practice', completed: 0, total: 2 })
+  round = recordQuizAnswer(round, 'initial:1', false, vocabulary)
+  assert.deepEqual(quizProgress(round), { phase: 'practice', completed: 1, total: 2 })
+  round = advanceQuizRound(round)
+  round = recordQuizAnswer(round, 'initial:2', true, vocabulary)
+  assert.deepEqual(quizProgress(round), { phase: 'practice', completed: 2, total: 2 })
+  round = advanceQuizRound(round)
+  assert.deepEqual(quizProgress(round), { phase: 'correction', completed: 0, total: 1 })
+  round = recordQuizAnswer(round, 'correction:1', true, vocabulary)
+  assert.deepEqual(quizProgress(round), { phase: 'correction', completed: 1, total: 1 })
+  assert.deepEqual(quizProgress(advanceQuizRound(round)), { phase: 'complete', completed: 2, total: 2 })
 })

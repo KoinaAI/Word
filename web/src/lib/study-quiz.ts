@@ -100,3 +100,12 @@ export function summarizeQuizRound(round: QuizRound) {
     correctionCount: corrections.length,
   }
 }
+
+/** Keep the first-pass goal fixed; correction practice has its own explicit progress. */
+export function quizProgress(round: QuizRound) {
+  const question = round.questions[round.cursor]
+  const summary = summarizeQuizRound(round)
+  if (!question) return { phase: 'complete' as const, completed: round.wordCount, total: round.wordCount }
+  if (question.correction) return { phase: 'correction' as const, completed: summary.correctionCount, total: round.questions.length - round.wordCount }
+  return { phase: 'practice' as const, completed: summary.answered, total: round.wordCount }
+}
