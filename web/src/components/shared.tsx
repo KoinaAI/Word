@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode, CSSProperties } from 'react'
 import { Button, Card, Chip, ProgressBar, Tooltip } from '@heroui/react'
-import { EmptyState } from '@heroui-pro/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
 import { BookOpen, ArrowRotateLeft, CircleExclamation } from '@gravity-ui/icons'
