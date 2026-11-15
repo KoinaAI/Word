@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Chip, Input } from '@heroui/react'
@@ -53,6 +53,11 @@ export function BookDetailPage() {
   const [filter, setFilter] = useState<WordFilter>('all')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const actionLock = useRef(false)
+  const activeRequest = useRef<object | null>(null)
+  useEffect(() => {
+    setPendingAction(null)
+    return () => { activeRequest.current = null; actionLock.current = false }
+  }, [bookId])
   const detail = useQuery({ queryKey: ['books', bookId], queryFn: () => api<BookDetail>(`/books/${bookId}`) })
   if (detail.isPending) return <Loading />
   if (detail.error) return <Failure error={detail.error} retry={detail.refetch} />
@@ -64,16 +69,21 @@ export function BookDetailPage() {
   const chooseBook = async (mode?: 'learn' | 'review' | 'sprint' | 'reinforce') => {
     if (actionLock.current) return
     actionLock.current = true
+    const request = {}
+    activeRequest.current = request
     setPendingAction(mode || 'select')
     try {
       if (user?.activeBookId !== book.id) {
         const updated = await api<User>('/me', json('PATCH', { activeBookId: book.id }))
         client.setQueryData(['me'], updated)
       }
+      if (activeRequest.current !== request) return
       if (mode) navigate(`/study/${book.id}/${mode}`)
       else toast.success('已设为当前词书')
-    } catch (e) { toast.error((e as Error).message) }
-    finally { actionLock.current = false; setPendingAction(null) }
+    } catch (e) { if (activeRequest.current === request) toast.error((e as Error).message) }
+    finally {
+      if (activeRequest.current === request) { activeRequest.current = null; actionLock.current = false; setPendingAction(null) }
+    }
   }
   return <div className="page-stack library-page book-detail-page"><Button variant="ghost" size="sm" className="self-start" onPress={() => navigate('/books')}><ArrowLeft />全部词书</Button>
     <section className="book-overview"><BookCover book={book} /><div className="book-overview-copy"><div className="book-overview-labels"><Chip variant="soft">{book.category}</Chip>{user?.activeBookId === book.id && <Chip color="success" variant="soft">当前词书</Chip>}</div><h1>{book.title}</h1><p>{book.description}</p><div className="book-overview-counts"><span><strong>{book.wordCount}</strong>个单词</span><span><strong>{book.learnedCount}</strong>已掌握</span><span><strong>{book.dueCount}</strong>到期复习</span></div><div className="learning-progress-copy"><span>掌握进度</span><strong>{book.wordCount ? Math.round(book.learnedCount / book.wordCount * 100) : 0}%</strong></div><Progress label="词书掌握进度" value={book.wordCount ? book.learnedCount / book.wordCount * 100 : 0} /><div className="book-learning-actions"><Button variant={book.dueCount > 0 ? 'outline' : 'primary'} isDisabled={counts.new === 0 || pendingAction !== null} isPending={pendingAction === 'learn'} onPress={() => { void chooseBook('learn') }}><BookOpen />{counts.new ? `学新词 · ${Math.min(counts.new, user?.dailyGoal || 20)} 词` : '新词已学完'}</Button><Button variant={book.dueCount > 0 ? 'primary' : 'outline'} isDisabled={book.dueCount === 0 || pendingAction !== null} isPending={pendingAction === 'review'} onPress={() => { void chooseBook('review') }}><ArrowsRotateRight />{book.dueCount ? `到期复习 · ${book.dueCount} 词` : '暂无到期复习'}</Button></div><div className="book-secondary-actions"><Button variant="ghost" isDisabled={pendingAction !== null || book.wordCount === 0} isPending={pendingAction === 'sprint'} onPress={() => { void chooseBook('sprint') }}><Thunderbolt />临考速刷</Button>{counts.reinforce > 0 && <Button variant="ghost" isDisabled={pendingAction !== null} isPending={pendingAction === 'reinforce'} onPress={() => { void chooseBook('reinforce') }}>巩固 {counts.reinforce} 词</Button>}{user?.activeBookId !== book.id && <Button variant="ghost" isDisabled={pendingAction !== null} isPending={pendingAction === 'select'} onPress={() => { void chooseBook() }}>设为当前词书</Button>}</div></div></section>
