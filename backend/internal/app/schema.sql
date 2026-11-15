@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS progress (
  PRIMARY KEY(user_id,word_id)
 );
 CREATE INDEX IF NOT EXISTS progress_due ON progress(user_id,due_at);
+CREATE TABLE IF NOT EXISTS learn_progress (
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+ stage INTEGER NOT NULL DEFAULT 0 CHECK(stage BETWEEN 0 AND 2), revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+ updated_at TEXT NOT NULL, PRIMARY KEY(user_id,word_id)
+);
 CREATE TABLE IF NOT EXISTS favorites (
  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
  PRIMARY KEY(user_id,word_id)
@@ -37,6 +42,11 @@ CREATE TABLE IF NOT EXISTS answers (
 );
 CREATE INDEX IF NOT EXISTS answers_user_time ON answers(user_id,created_at);
 CREATE INDEX IF NOT EXISTS answers_time ON answers(created_at);
+CREATE TABLE IF NOT EXISTS learn_answer_steps (
+ answer_id INTEGER PRIMARY KEY REFERENCES answers(id) ON DELETE CASCADE,
+ request_stage INTEGER NOT NULL CHECK(request_stage IN (0,1)), request_revision INTEGER NOT NULL CHECK(request_revision>=0),
+ result_stage INTEGER NOT NULL CHECK(result_stage BETWEEN 0 AND 2), result_revision INTEGER NOT NULL CHECK(result_revision>0)
+);
 CREATE TABLE IF NOT EXISTS navigation (
  id TEXT PRIMARY KEY, label TEXT NOT NULL, path TEXT NOT NULL UNIQUE, icon TEXT NOT NULL, enabled INTEGER NOT NULL, sort_order INTEGER NOT NULL
 );
