@@ -62,7 +62,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border border-border bg-overlay p-6 shadow-overlay duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[16px] border border-border bg-overlay p-6 shadow-overlay duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
           className
         )}
         {...props}
@@ -72,7 +72,7 @@ function DialogContent({
           <Tooltip>
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-1 right-1 flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-focus focus-visible:-outline-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+            className="absolute top-1 right-1 flex size-11 items-center justify-center rounded-[8px] text-muted hover:bg-surface-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-focus focus-visible:-outline-offset-2 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
           >
             <XIcon />
             <span className="sr-only">关闭</span>
