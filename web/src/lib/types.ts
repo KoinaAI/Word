@@ -10,6 +10,7 @@ export type Word = {
   id: number; bookId: number; text: string; phonetic: string; meaning: string;
   example: string; exampleMeaning: string; favorite: boolean;
   status: 'new' | 'learning' | 'mastered'; reinforce: boolean; dueAt?: string;
+  learnStage?: 0 | 1 | 2; learnRevision?: number;
 }
 export type Mode = 'learn' | 'review' | 'sprint' | 'reinforce'
 export type Answer = 'known' | 'unknown' | 'unsure-known' | 'unsure-unknown'
