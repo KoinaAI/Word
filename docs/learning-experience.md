@@ -4,15 +4,17 @@
 
 | 公开参考 | 在本站的具体应用 |
 | --- | --- |
-| [Quizlet Learn](https://help.quizlet.com/hc/en-us/articles/360030986971-Studying-with-Learn) 与[学习设计](https://quizlet.com/features/how-quizlet-works) | 明确每轮题量；英译中 / 中译英主动作答，再显示反馈；首次没记住的词在本轮末换方向再练。 |
+| [Quizlet Learn](https://help.quizlet.com/hc/en-us/articles/360030986971-Studying-with-Learn) 与[学习设计](https://quizlet.com/features/how-quizlet-works) | 明确每轮题量；主动作答后显示反馈，按没记住的词安排再练。 |
 | [Quizlet 定向学习](https://help.quizlet.com/hc/en-us/articles/360048803491-Using-Progress-for-targeted-studying) | 词书按未学、学习中、已掌握筛选，另提供独立的待巩固筛选。 |
 | [墨墨每日学习量](https://memodocs.maimemo.com/docs/PulqwOB1xi5jV0kb8Y1cPE7ZnKc/) | 首页有到期复习时优先提供复习入口，随后继续新词。 |
-| [百词斩](https://www.baicizhan.com/) 与[不背单词开发者介绍](https://apps.apple.com/cn/app/id698570469) | 围绕词书学习，用现有双语例句补充语境，突出句中目标词，集中回顾本轮错词。 |
+| [百词斩官网](https://www.baicizhan.com/)与[开发者介绍](https://apps.apple.com/cn/app/id557545298) | 参考英文选义、中文选词等题型和重复学习，本站按明确需求采用每词两步必过、答错重置。官方公开页没有披露精确的阶段次数与重置算法，本站流程不宣称复刻其内部算法。 |
+| [不背单词开发者介绍](https://apps.apple.com/cn/app/id698570469) | 用现有双语例句补充语境，突出句中目标词，集中回顾本轮错词。 |
 
 交互约定：
 
 - 作答后收起干扰选项，只保留反馈与可展开的本题选项；下一题固定在屏幕底部，正文为其预留空间。用户自行决定阅读时长。
-- 首轮题数固定，错词回练单独计进度。纠错结果不覆盖首次成绩，也不再次提交学习记录。
+- 新词学习中，每个词都完成“英文选中文→中文选英文”。任一步错答，只重置该词的阶段并排到待练词之后，重练不限次数。两步均通过才增加全局完成词数。阶段与版本保存于后端，退出后从已保存阶段继续；每个真实作答记录一次，同一请求重试不重复计数。
+- 到期复习与巩固保留首轮评分和一次本地纠错，纠错不重复提交或覆盖复习安排。
 - 中译英题答前隐藏音标、例句和发音，避免泄露答案。`F` 发音；`1–4` 选项；`Enter` 继续。速刷仍使用原来的三个判断按钮，空格只展开释义。
 - 收藏可在答后执行，同一个词切入纠错阶段时继续共享保存状态。
 - “今日已练习”是所有模式下按 UTC 日期去重的词数；“每轮新词数量”是单轮上限，两者不比较为每日新词完成率。

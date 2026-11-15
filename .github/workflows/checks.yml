@@ -63,8 +63,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.22.3"
-      - name: Check question generation and correction accounting
-        run: node --test web/tests/study-quiz.test.ts
+      - name: Check question generation and learning stages
+        run: node --test web/tests/study-quiz.test.ts web/tests/learn-round.test.ts
 
   frontend:
     needs: changes

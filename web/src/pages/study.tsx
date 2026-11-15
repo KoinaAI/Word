@@ -11,12 +11,19 @@ import { completeStudyAnswer, createStudyEventId, createStudyRound, studyAnswer,
 import type { StudyDecision } from '@/lib/study-flow'
 import type { Answer, Book, Mode, Study, Word } from '@/lib/types'
 import { advanceQuizRound, createQuizRound, normalizeSpelling, quizProgress, recordQuizAnswer, summarizeQuizRound } from '@/lib/study-quiz'
+import type { QuizRound } from '@/lib/study-quiz'
+import { advanceLearnRound, createLearnRound, isLearnAnswerResponse, learnProgress, recordLearnAnswer, summarizeLearnRound } from '@/lib/learn-round'
+import type { LearnAnswerResponse, LearnRound } from '@/lib/learn-round'
 import { toast } from 'sonner'
 import './study.css'
 
 const modeLabels: Record<Mode, string> = { learn: '日常学习', review: '记忆复习', sprint: '临考速刷', reinforce: '重点巩固' }
-type Submission = { wordId: number; mode: Mode; answer: Answer; eventId: string }
+type Submission = { wordId: number; mode: Mode; answer: Answer; eventId: string; learnStage?: 0 | 1; learnRevision?: number }
 type Transaction = { payload: Submission; phase: 'sending' | 'failed' | 'settled' }
+
+function isLearnRound(round: QuizRound | LearnRound): round is LearnRound {
+  return 'kind' in round && round.kind === 'learn'
+}
 
 export function StudyPage() {
   const { bookId: rawBookId, mode: rawMode } = useParams()
@@ -69,7 +76,7 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
   const navigate = useNavigate()
   const client = useQueryClient()
   const reduceMotion = useReducedMotion()
-  const [round, setRound] = useState(() => createQuizRound(initialStudy.words, vocabulary))
+  const [round, setRound] = useState<QuizRound | LearnRound>(() => mode === 'learn' ? createLearnRound(initialStudy.words, vocabulary) : createQuizRound(initialStudy.words, vocabulary))
   const [feedback, setFeedback] = useState<QuizFeedback | null>(null)
   const [spelling, setSpelling] = useState('')
   const [showOptions, setShowOptions] = useState(false)
@@ -87,10 +94,12 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
   const questionElement = useRef<HTMLElement | null>(null)
   const optionsId = useId()
   const question = round.questions[round.cursor]
+  const learnQuestion = isLearnRound(round) ? round.questions[round.cursor] : undefined
   const displayedKey = useRef(question?.key)
   const summary = summarizeQuizRound(round)
-  const progress = quizProgress(round)
-  const mistakes = round.questions.filter(item => !item.correction && round.results.some(result => result.key === item.key && !result.correct))
+  const learningSummary = isLearnRound(round) ? summarizeLearnRound(round) : null
+  const progress = isLearnRound(round) ? learnProgress(round) : quizProgress(round)
+  const mistakeWords = learningSummary ? learningSummary.mistakes : round.questions.filter(item => !item.correction && round.results.some(result => result.key === item.key && !result.correct)).map(item => item.word)
   const terminalFailure = failure instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(failure.status)
   const audioAllowed = !!question && (question.direction === 'en-zh' || !!feedback)
 
@@ -127,12 +136,20 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     setSaving(true)
     setFailure(null)
     try {
-      await api<{ ok: true }>('/study/answer', json('POST', pending.payload))
+      const response = await api<{ ok: true } | LearnAnswerResponse>('/study/answer', json('POST', pending.payload))
       for (const queryKey of ['stats', 'books', 'favorites', 'admin', 'study']) {
         void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
       }
       if (!mounted.current) return
-      setRound(current => recordQuizAnswer(current, pending.questionKey, pending.correct, vocabulary))
+      if (isLearnRound(round)) {
+        const currentQuestion = round.questions[round.cursor]
+        if (!currentQuestion || !isLearnAnswerResponse(currentQuestion, pending.correct, response)) throw new ApiError('学习阶段未确认，请刷新当前队列。', 409)
+        const next = recordLearnAnswer(round, pending.questionKey, pending.correct, response, vocabulary)
+        if (next === round) throw new ApiError('学习阶段已变化，请刷新当前队列。', 409)
+        setRound(next)
+      } else {
+        setRound(current => recordQuizAnswer(current, pending.questionKey, pending.correct, vocabulary))
+      }
       transaction.current = null
       setSaving(false)
     } catch (error) {
@@ -147,7 +164,7 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     if (!question || locked.current) return
     locked.current = true
     setFeedback(choice)
-    if (question.correction) {
+    if (mode !== 'learn' && question.correction) {
       // The first answer already schedules review. Local correction must not extend that interval.
       setRound(current => recordQuizAnswer(current, question.key, choice.correct, vocabulary))
       return
@@ -155,7 +172,7 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     void saveAnswer({
       questionKey: question.key,
       correct: choice.correct,
-      payload: { wordId: question.word.id, mode, answer: choice.correct ? 'known' : 'unknown', eventId: createStudyEventId() },
+      payload: { wordId: question.word.id, mode, answer: choice.correct ? 'known' : 'unknown', eventId: createStudyEventId(), ...(learnQuestion ? { learnStage: learnQuestion.learnStage, learnRevision: learnQuestion.learnRevision } : {}) },
     })
   }
 
@@ -163,7 +180,7 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     if (!question || !feedback || saving || failure || moving.current || !round.results.some(result => result.key === question.key)) return
     moving.current = true
     setTransitioning(true)
-    setRound(current => advanceQuizRound(current))
+    setRound(current => isLearnRound(current) ? advanceLearnRound(current) : advanceQuizRound(current))
     setFeedback(null)
     setSpelling('')
     setShowOptions(false)
@@ -222,17 +239,32 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     return () => document.removeEventListener('keydown', onKeyDown, true)
   })
 
-  const header = <StudyHeader book={initialStudy.book} mode={mode} exit={exit} saving={saving} completed={progress.completed} total={progress.total} detail={progress.phase === 'correction' ? '错词再练' : progress.phase === 'complete' ? '本轮完成' : '双向练习'} />
+  const header = <StudyHeader book={initialStudy.book} mode={mode} exit={exit} saving={saving} completed={progress.completed} total={progress.total} unit={mode === 'learn' ? '词' : '题'} detail={mode === 'learn' ? '两步记牢' : progress.phase === 'correction' ? '错词再练' : progress.phase === 'complete' ? '本轮完成' : '双向练习'} />
   if (!round.wordCount) {
     return <div className="study-page">{header}<main className="study-complete"><Empty title={mode === 'review' ? '暂时没有到期的复习' : mode === 'reinforce' ? '巩固列表已经清空' : '这本词书的新词已学完'} description={mode === 'reinforce' ? '速刷中看过释义后选择“会”的词，会在这里做双向练习。' : '选择其他词书，或等下次复习到期后再来。'} action={<Button variant="outline" onPress={exit}>返回词书</Button>} /></main></div>
   }
   if (!question) {
-    return <div className="study-page">{header}<main className="study-complete"><div className="study-complete-icon"><Check /></div><p className="text-sm text-muted">{modeLabels[mode]}已完成</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">记住一点，再前进一点。</h1><p className="mt-4 text-sm leading-6 text-muted">本轮学习 {round.wordCount} 个单词，首次答对 {summary.correct} 个。</p><div className="study-summary"><SummaryCount label="首次答对" value={summary.correct} /><SummaryCount label="需要再记" value={summary.mistakes} />{summary.correctionCount > 0 && <SummaryCount label="纠错答对" value={summary.corrected} />}</div><p className="mt-6 max-w-md text-sm leading-6 text-muted">{summary.mistakes ? mode === 'reinforce' ? '首次答错的词已返回新词列表，方便重新打好基础。' : '首次答错的词已安排短间隔复习，约 10 分钟后再见。' : '答对的单词已进入间隔复习计划。'}{summary.correctionCount > 0 && ' 本轮纠错练习不重复计入学习次数。'}</p>{mistakes.length > 0 && <Card className="quiz-recap"><Card.Header><Card.Title>值得再看一遍</Card.Title><Card.Description>本轮首次没记住的词，下次复习重点留意。</Card.Description></Card.Header><Card.Content><ul>{(recapExpanded ? mistakes : mistakes.slice(0, 5)).map(item => <li key={item.key}><div><strong lang="en">{item.word.text}</strong><p>{item.word.meaning}</p></div><IconButton label={`播放 ${item.word.text} 发音`} onPress={() => pronounce(item.word.text)}><Volume /></IconButton></li>)}</ul></Card.Content>{mistakes.length > 5 && <Card.Footer><Button fullWidth variant="ghost" onPress={() => setRecapExpanded(value => !value)}>{recapExpanded ? '收起列表' : `查看全部 ${mistakes.length} 个词`}{recapExpanded ? <ChevronUp /> : <ChevronDown />}</Button></Card.Footer>}</Card>}<div className="mt-8 flex flex-wrap justify-center gap-3">{mode === 'learn'  && <Button onPress={reload}>再学一组<ArrowRight /></Button>}{mode === 'reinforce' && summary.mistakes > 0 && <Button onPress={() => navigate(`/study/${initialStudy.book.id}/learn`)}>练习新词<ArrowRight /></Button>}<Button variant="outline" onPress={exit}><BookOpen />返回词书</Button></div></main></div>
+    return <div className="study-page">{header}<main className="study-complete">
+      <div className="study-complete-icon"><Check /></div>
+      <p className="text-sm text-muted">{modeLabels[mode]}已完成</p>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight">{learningSummary ? '每个词，都多记住了一遍。' : '记住一点，再前进一点。'}</h1>
+      <p className="mt-4 text-sm leading-6 text-muted">{learningSummary ? `${round.wordCount} 个单词均已通过英译中与中译英。` : `本轮学习 ${round.wordCount} 个单词，首次答对 ${summary.correct} 个。`}</p>
+      <div className="study-summary">{learningSummary ? <><SummaryCount label="完成单词" value={learningSummary.completed} /><SummaryCount label="本轮作答" value={learningSummary.attempts} /><SummaryCount label="重新练过" value={learningSummary.restartedWords} /></> : <><SummaryCount label="首次答对" value={summary.correct} /><SummaryCount label="需要再记" value={summary.mistakes} />{summary.correctionCount > 0 && <SummaryCount label="纠错答对" value={summary.corrected} />}</>}</div>
+      <p className="mt-6 max-w-md text-sm leading-6 text-muted">{learningSummary ? `完成两步的单词已加入间隔复习计划。${learningSummary.restartedWords ? '错过的词也从第一步重新通过了。' : '下次到期时，再来回顾。'}` : summary.mistakes ? mode === 'reinforce' ? '首次答错的词已返回新词列表，方便重新打好基础。' : '首次答错的词已安排短间隔复习，约 10 分钟后再见。' : '答对的单词已进入间隔复习计划。'}{!learningSummary && summary.correctionCount > 0 && ' 本轮纠错练习不重复计入学习次数。'}</p>
+      {mistakeWords.length > 0 && <Card className="quiz-recap"><Card.Header><Card.Title>值得再看一遍</Card.Title><Card.Description>本轮重新练过的词，下次复习重点留意。</Card.Description></Card.Header><Card.Content><ul>{(recapExpanded ? mistakeWords : mistakeWords.slice(0, 5)).map(word => <li key={word.id}><div><strong lang="en">{word.text}</strong><p>{word.meaning}</p></div><IconButton label={`播放 ${word.text} 发音`} onPress={() => pronounce(word.text)}><Volume /></IconButton></li>)}</ul></Card.Content>{mistakeWords.length > 5 && <Card.Footer><Button fullWidth variant="ghost" onPress={() => setRecapExpanded(value => !value)}>{recapExpanded ? '收起列表' : `查看全部 ${mistakeWords.length} 个词`}{recapExpanded ? <ChevronUp /> : <ChevronDown />}</Button></Card.Footer>}</Card>}
+      <div className="mt-8 flex flex-wrap justify-center gap-3">{mode === 'learn' && <Button onPress={reload}>再学一组<ArrowRight /></Button>}{mode === 'reinforce' && summary.mistakes > 0 && <Button onPress={() => navigate(`/study/${initialStudy.book.id}/learn`)}>练习新词<ArrowRight /></Button>}<Button variant="outline" onPress={exit}><BookOpen />返回词书</Button></div>
+    </main></div>
   }
 
   const selectedOption = feedback?.selectedId ? question.options.find(option => option.id === feedback.selectedId) : undefined
-  const entersCorrection = round.cursor === round.wordCount - 1 && round.questions.length > round.wordCount
+  const entersCorrection = mode !== 'learn' && round.cursor === round.wordCount - 1 && round.questions.length > round.wordCount
   const nextLabel = round.cursor === round.questions.length - 1 ? '查看本轮结果' : entersCorrection ? `再练 ${summary.mistakes} 个错词` : '下一题'
+  const learningNote = learnQuestion && feedback ? !feedback.correct
+    ? saving || failure ? '保存后，这个词将从第一步重新练习。' : '这个词已回到第一步，稍后重新练习。'
+    : learnQuestion.learnStage === 0
+      ? '词义认对了，接下来还要完成中译英。'
+      : saving || failure ? '两步都答对了，保存成功后完成这个词。' : '两步都通过了，这个词已加入复习计划。'
+    : null
   const answerOptions = question.kind === 'choice' && <div id={optionsId} className="quiz-options" role="group" aria-label="答案选项">{question.options.map((option, index) => {
     const correctOption = !!feedback && option.id === question.word.id
     const wrongOption = !!feedback && option.id === feedback.selectedId && !feedback.correct
@@ -243,7 +275,8 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
     <motion.section key={question.key} ref={questionElement} tabIndex={-1} aria-label="当前题目" className="quiz-question" initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} onAnimationComplete={() => unlockQuestion(question.key)}>
       {!feedback ? <>
         <div className="quiz-prompt">
-          <span className="quiz-direction">{question.correction ? '错词再练 · ' : ''}{question.direction === 'en-zh' ? '英译中' : '中译英'}</span>
+          {learnQuestion && <LearnSteps stage={learnQuestion.learnStage} />}
+          <span className="quiz-direction">{mode !== 'learn' && question.correction ? '错词再练 · ' : ''}{question.direction === 'en-zh' ? '英译中' : '中译英'}</span>
           <p className="quiz-instruction">{question.kind === 'typing' ? '写出对应的英文单词' : question.direction === 'en-zh' ? '选择正确的中文释义' : '选择对应的英文单词'}</p>
           <h1 className={question.direction === 'en-zh' ? 'quiz-word' : 'quiz-meaning'} lang={question.direction === 'en-zh' ? 'en' : 'zh-CN'}>{question.direction === 'en-zh' ? question.word.text : question.word.meaning}</h1>
           {question.direction === 'en-zh' && <div className="study-pronunciation"><span lang="en">{question.word.phonetic || '音标暂缺'}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(question.word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div>}
@@ -253,18 +286,18 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
         <p className="quiz-help">{question.kind === 'choice' ? `按 1–${question.options.length} 选择${audioAllowed ? ' · F 发音' : ''}` : '输入后按 Enter 确认'}</p>
       </> : <>
         <div className="quiz-feedback" data-correct={feedback.correct}>
-          <div className="quiz-feedback-title" role="status" aria-live="polite">{feedback.correct ? <Check /> : <ArrowRotateLeft />}<strong>{feedback.correct ? question.correction ? '这次记住了' : '回答正确' : '再看一遍，加深印象'}</strong><span>{question.direction === 'en-zh' ? '英译中' : '中译英'}</span></div>
+          <div className="quiz-feedback-title" role="status" aria-live="polite">{feedback.correct ? <Check /> : <ArrowRotateLeft />}<strong>{feedback.correct ? learnQuestion ? learnQuestion.learnStage === 0 ? '词义认对了' : '英文也记住了' : question.correction ? '这次记住了' : '回答正确' : learnQuestion ? '从第一步，再记一次' : '再看一遍，加深印象'}</strong><span>{question.direction === 'en-zh' ? '英译中' : '中译英'}</span></div>
           <div className="quiz-feedback-heading"><h1 lang="en">{question.word.text}</h1><FavoriteWord favorite={favoriteIds.has(question.word.id)} pending={pendingFavoriteIds.has(question.word.id)} onPress={() => { void toggleFavorite(question.word.id) }} /></div>
           <div className="quiz-feedback-audio"><span lang="en">{question.word.phonetic}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(question.word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div>
           <p className="quiz-feedback-meaning">{question.word.meaning}</p>
           {!feedback.correct && (selectedOption || feedback.spelling) && <p className="quiz-your-answer"><span>你的答案</span>{selectedOption?.label || feedback.spelling}</p>}
           {question.word.example && <div className="quiz-example"><span className="quiz-example-label">放进句子里记</span><p lang="en"><WordInContext text={question.word.example} word={question.word.text} /></p>{question.word.exampleMeaning && <p>{question.word.exampleMeaning}</p>}</div>}
-          {(!feedback.correct || question.correction) && <p className="quiz-correction-note">{question.correction ? '这次是本轮纠错练习，复习安排保持不变。' : saving || failure ? '保存后会加入本轮错词再练，稍后换个方向再试。' : '已加入本轮错词再练，稍后换个方向再试一次。'}</p>}
+          {learningNote ? <p className="quiz-correction-note">{learningNote}</p> : (!feedback.correct || question.correction) && <p className="quiz-correction-note">{question.correction ? '这次是本轮纠错练习，复习安排保持不变。' : saving || failure ? '保存后会加入本轮错词再练，稍后换个方向再试。' : '已加入本轮错词再练，稍后换个方向再试一次。'}</p>}
         </div>
         {question.kind === 'choice' && <><Button fullWidth variant="ghost" className="quiz-options-toggle" aria-expanded={showOptions} aria-controls={optionsId} onPress={() => setShowOptions(value => !value)}>{showOptions ? '收起本题选项' : '查看本题选项'}{showOptions ? <ChevronUp /> : <ChevronDown />}</Button>{showOptions && answerOptions}</>}
       </>}
     </motion.section>
-    {failure ? <Card className="quiz-save-error" role="alert"><Card.Header><Card.Title>{terminalFailure ? '学习队列发生了变化' : '答案还没有保存成功'}</Card.Title><Card.Description>{failure.message}{!terminalFailure && ' 重试会保存同一次选择。'}</Card.Description></Card.Header><Card.Footer className="flex-wrap gap-3">{terminalFailure ? <Button onPress={failure instanceof ApiError && failure.status === 401 ? () => navigate('/login') : reload}>{failure instanceof ApiError && failure.status === 401 ? '重新登录' : '刷新学习队列'}</Button> : <Button isPending={saving} onPress={() => { if (transaction.current) void saveAnswer(transaction.current) }}>重试保存</Button>}<Button variant="outline" onPress={exit} isDisabled={saving}>返回词书</Button></Card.Footer></Card> : feedback && <div className="quiz-next"><div className="quiz-next-inner"><div className="quiz-next-context"><strong>{question.correction ? '错词再练' : '本轮练习'}</strong><span>{progress.completed} / {progress.total} 已完成{entersCorrection ? ` · 接下来再练 ${summary.mistakes} 词` : ''}</span></div><Button fullWidth onPress={nextQuestion} isDisabled={saving || transitioning} isPending={saving} className="study-action" aria-keyshortcuts="Enter">{saving ? '正在保存' : nextLabel}<KeyHint value="Enter" /></Button></div></div>}
+    {failure ? <Card className="quiz-save-error" role="alert"><Card.Header><Card.Title>{terminalFailure ? '学习队列发生了变化' : '答案还没有保存成功'}</Card.Title><Card.Description>{failure.message}{!terminalFailure && ' 重试会保存同一次选择。'}</Card.Description></Card.Header><Card.Footer className="flex-wrap gap-3">{terminalFailure ? <Button onPress={failure instanceof ApiError && failure.status === 401 ? () => navigate('/login') : reload}>{failure instanceof ApiError && failure.status === 401 ? '重新登录' : '刷新学习队列'}</Button> : <Button isPending={saving} onPress={() => { if (transaction.current) void saveAnswer(transaction.current) }}>重试保存</Button>}<Button variant="outline" onPress={exit} isDisabled={saving}>返回词书</Button></Card.Footer></Card> : feedback && <div className="quiz-next"><div className="quiz-next-inner"><div className="quiz-next-context"><strong>{learnQuestion ? '两步记牢' : question.correction ? '错词再练' : '本轮练习'}</strong><span>{progress.completed} / {progress.total} {learnQuestion ? '词已完成' : '已完成'}{entersCorrection ? ` · 接下来再练 ${summary.mistakes} 词` : ''}</span></div><Button fullWidth onPress={nextQuestion} isDisabled={saving || transitioning} isPending={saving} className="study-action" aria-keyshortcuts="Enter">{saving ? '正在保存' : nextLabel}<KeyHint value="Enter" /></Button></div></div>}
   </main></div>
 }
 
@@ -279,8 +312,12 @@ function WordInContext({ text, word }: { text: string; word: string }) {
   return text.split(pattern).map((part, index) => index % 2 ? <mark key={index}>{part}</mark> : part)
 }
 
-function StudyHeader({ book, mode, exit, saving, completed, total, detail }: { book: Book; mode: Mode; exit: () => void; saving: boolean; completed: number; total: number; detail?: string }) {
-  return <header className="study-header"><div className="study-header-row"><Button variant="ghost" onPress={exit} isDisabled={saving} className="study-exit"><ArrowLeft /><span>退出</span></Button><div className="study-header-title"><p>{book.title}</p><span>{modeLabels[mode]}{detail ? ` · ${detail}` : ''}</span></div><span className="study-count" aria-label={`已完成 ${completed} 题，共 ${total} 题`}>{completed}<span> / </span>{total}</span></div><Progress label="本轮学习进度" value={total ? completed / total * 100 : 0} /></header>
+function StudyHeader({ book, mode, exit, saving, completed, total, detail, unit = '题' }: { book: Book; mode: Mode; exit: () => void; saving: boolean; completed: number; total: number; detail?: string; unit?: string }) {
+  return <header className="study-header"><div className="study-header-row"><Button variant="ghost" onPress={exit} isDisabled={saving} className="study-exit"><ArrowLeft /><span>退出</span></Button><div className="study-header-title"><p>{book.title}</p><span>{modeLabels[mode]}{detail ? ` · ${detail}` : ''}</span></div><span className="study-count" aria-label={`已完成 ${completed}${unit}，共 ${total}${unit}`}>{completed}<span> / </span>{total}</span></div><Progress label="本轮学习进度" value={total ? completed / total * 100 : 0} /></header>
+}
+
+function LearnSteps({ stage }: { stage: 0 | 1 }) {
+  return <div className="learn-steps" aria-label={`当前第 ${stage + 1} 步，共 2 步`}><span data-active={stage === 0}>1 认识词义</span><i aria-hidden="true" /><span data-active={stage === 1}>2 回忆英文</span></div>
 }
 
 function SprintSession({ initialStudy, mode, exit, reload }: { initialStudy: Study; mode: Mode; exit: () => void; reload: () => void }) {

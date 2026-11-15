@@ -11,7 +11,7 @@ import { count } from '@/lib/utils'
 import { adminDate } from './admin-common'
 
 const answerLabels: Record<string, string> = {
-  known: '会', unknown: '不会', 'unsure-known': '加入巩固', 'unsure-unknown': '仍需学习',
+  known: '答对', unknown: '未记住', 'unsure-known': '加入巩固', 'unsure-unknown': '仍需学习',
 }
 
 export function AdminOverview() {
