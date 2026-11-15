@@ -1,13 +1,37 @@
 import { toast } from 'sonner'
-/** Uses the browser's installed English voices; no third-party audio request. */
+
+let player: HTMLAudioElement | undefined
+let playbackId = 0
+
+/** Stop playback and cancel outstanding audio when changing words or leaving a page. */
+export function stopPronunciation() {
+  playbackId++
+  if (!player) return
+  player.onerror = null
+  player.pause()
+  player.removeAttribute('src')
+  player.load()
+}
+
+/** Play Youdao pronunciation: type 0 is American English; type 1 is British English. */
 export function pronounce(text: string, accent = localStorage.getItem('word-accent') || 'en-US') {
-  if (!('speechSynthesis' in window)) { toast.error('当前浏览器不支持发音，请换用 Chrome、Edge 或 Safari。'); return }
-  window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = accent
-  utterance.rate = 0.85
-  const voice = window.speechSynthesis.getVoices().find(item => item.lang === accent)
-  if (voice) utterance.voice = voice
-  utterance.onerror = (event) => { if (!['canceled', 'interrupted'].includes(event.error)) toast.error('发音暂不可用，请检查系统语音设置。') }
-  window.speechSynthesis.speak(utterance)
+  stopPronunciation()
+  const word = text.trim()
+  if (!word) return
+
+  const audio = player ??= new Audio()
+  const requestId = playbackId
+  const params = new URLSearchParams({ type: accent === 'en-GB' ? '1' : '0', audio: word })
+  let failed = false
+  const reportFailure = (error?: unknown) => {
+    if (requestId !== playbackId || failed) return
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    failed = true
+    toast.error(error instanceof DOMException && error.name === 'NotAllowedError'
+      ? '浏览器已阻止自动发音，请点击发音按钮播放。'
+      : '发音加载失败，请检查网络后重试。')
+  }
+  audio.onerror = () => reportFailure()
+  audio.src = `https://dict.youdao.com/dictvoice?${params}`
+  void audio.play().catch(reportFailure)
 }

@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, ArrowRotateLeft, BookOpen, Check, Volume } from 
 import { Button, Card } from '@heroui/react'
 import { Empty, Failure, IconButton, Loading, Progress } from '@/components/shared'
 import { ApiError, api, json, useUser } from '@/lib/api'
-import { pronounce } from '@/lib/speech'
+import { pronounce, stopPronunciation } from '@/lib/speech'
 import { completeStudyAnswer, createStudyEventId, createStudyRound, studyAnswer, summarizeStudyRound } from '@/lib/study-flow'
 import type { StudyDecision } from '@/lib/study-flow'
 import type { Answer, Mode, Study } from '@/lib/types'
@@ -78,12 +78,12 @@ function StudySession({ initialStudy, mode, exit, reload }: { initialStudy: Stud
     mounted.current = true
     return () => {
       mounted.current = false
-      window.speechSynthesis?.cancel()
     }
   }, [])
 
   useEffect(() => {
     if (word && localStorage.getItem('word-auto-audio') === 'true') pronounce(word.text)
+    return stopPronunciation
   }, [word?.id])
 
   // Keep the lock through the outgoing animation; the next card unlocks only after it is visible.
