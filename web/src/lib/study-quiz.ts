@@ -1,4 +1,4 @@
-import type { Word } from './types'
+import type { Word } from './types.ts'
 
 export type QuizDirection = 'en-zh' | 'zh-en'
 export type QuizOption = { id: number; label: string }

@@ -51,6 +51,21 @@ jobs:
             echo '::notice::HEROUI_AUTH_TOKEN is unavailable. Licensed frontend/container builds will be skipped; this run does not verify them.'
           fi
 
+  quiz:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.22.3"
+      - name: Check question generation and correction accounting
+        run: node --test web/tests/study-quiz.test.ts
+
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true' && needs.changes.outputs.pro_available == 'true'
@@ -115,7 +130,7 @@ jobs:
         run: python3 scripts/smoke_container.py word:check
 
   results:
-    needs: [changes, frontend, backend, container]
+    needs: [changes, quiz, frontend, backend, container]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 3
@@ -123,6 +138,8 @@ jobs:
       - name: Report checked and unavailable components
         env:
           CHANGES: ${{ needs.changes.result }}
+          QUIZ_SELECTED: ${{ needs.changes.outputs.frontend }}
+          QUIZ_RESULT: ${{ needs.quiz.result }}
           FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
           BACKEND_SELECTED: ${{ needs.changes.outputs.backend }}
           CONTAINER_SELECTED: ${{ needs.changes.outputs.container }}
@@ -139,10 +156,10 @@ jobs:
           failed = []
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('| Component | Result |\n|---|---|\n')
-              for name in ('frontend', 'backend', 'container'):
+              for name in ('quiz', 'frontend', 'backend', 'container'):
                   selected = os.environ[name.upper() + '_SELECTED'] == 'true'
                   result = os.environ[name.upper() + '_RESULT']
-                  expected_skip = not selected or (name != 'backend' and os.environ['PRO_AVAILABLE'] != 'true')
+                  expected_skip = not selected or (name in ('frontend', 'container') and os.environ['PRO_AVAILABLE'] != 'true')
                   if selected and expected_skip:
                       missing.append(name)
                       label = 'Not verified: licensed build token unavailable'

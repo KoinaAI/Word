@@ -92,9 +92,9 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
 
   useEffect(() => {
     // Reading a Chinese prompt aloud would disclose the answer before the learner has chosen.
-    if (question?.direction === 'en-zh' && localStorage.getItem('word-auto-audio') === 'true') pronounce(question.word.text)
+    if (question && audioAllowed && localStorage.getItem('word-auto-audio') === 'true') pronounce(question.word.text)
     return stopPronunciation
-  }, [question?.key])
+  }, [question?.key, audioAllowed])
 
   useLayoutEffect(() => {
     displayedKey.current = question?.key
@@ -211,6 +211,7 @@ function QuizSession({ initialStudy, vocabulary, mode, exit, reload }: { initial
         const wrongOption = !!feedback && option.id === feedback.selectedId && !feedback.correct
         return <Button key={option.id} fullWidth variant="outline" className="quiz-option" data-answer={correctOption ? 'correct' : wrongOption ? 'wrong' : undefined} isDisabled={!!feedback || transitioning} onPress={() => answerQuiz({ correct: option.id === question.word.id, selectedId: option.id })} aria-keyshortcuts={String(index + 1)}><span className="quiz-option-number" aria-hidden="true">{index + 1}</span><span className="quiz-option-text" lang={question.direction === 'en-zh' ? 'zh-CN' : 'en'}>{option.label}</span>{correctOption ? <Check aria-label="正确答案" /> : wrongOption ? <Xmark aria-label="本次选择错误" /> : null}</Button>
       })}</div> : <form className="quiz-spelling" onSubmit={event => { event.preventDefault(); if (spelling.trim()) answerQuiz({ correct: normalizeSpelling(spelling) === normalizeSpelling(question.word.text), spelling: spelling.trim() }) }}><TextField aria-label="英文拼写" isDisabled={!!feedback || transitioning} value={spelling} onChange={setSpelling}><Input fullWidth autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="输入英文单词" /></TextField><Button fullWidth type="submit" isDisabled={!spelling.trim() || !!feedback || transitioning}>确认答案<KeyHint value="Enter" /></Button><p className="text-center text-xs text-muted">这本词书的可区分选项较少，本题练习拼写。</p></form>}
+      {!feedback && <Button fullWidth variant="ghost" className="quiz-skip" isDisabled={transitioning} onPress={() => answerQuiz({ correct: false })}>想不起来，看看答案</Button>}
       <div className="quiz-feedback-slot">
         {feedback ? <div className="quiz-feedback" data-correct={feedback.correct} role="status" aria-live="polite"><div className="quiz-feedback-title">{feedback.correct ? <Check /> : <Xmark />}<strong>{feedback.correct ? question.correction ? '这次记住了' : '回答正确' : '再记一次，会更牢'}</strong></div>{question.direction === 'zh-en' && <div className="quiz-feedback-word"><strong lang="en">{question.word.text}</strong><span>{question.word.phonetic}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(question.word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div>}<p className="quiz-feedback-meaning">{question.word.meaning}</p>{feedback.spelling && !feedback.correct && <p className="mt-2 text-sm text-muted">你的拼写：{feedback.spelling}</p>}{question.word.example && <div className="quiz-example"><p lang="en">{question.word.example}</p>{question.word.exampleMeaning && <p>{question.word.exampleMeaning}</p>}</div>}{!feedback.correct && !question.correction && <p className="quiz-correction-note">本轮结束前，会再练习一次这个单词。</p>}</div> : <p className="quiz-help">{question.kind === 'choice' ? `按 1–${question.options.length} 选择${audioAllowed ? ' · F 发音' : ''}` : '输入后按 Enter 确认'}</p>}
       </div>
