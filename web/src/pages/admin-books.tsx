@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Chip, Input, Label, TextArea, TextField } from '@heroui/react'
@@ -49,24 +49,32 @@ function BookEditor({ book, onClose, onSaved }: { book?: Book; onClose: () => vo
 export function AdminBooks() {
   const navigate = useNavigate()
   const refresh = useRefresh()
-  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState({ search: '', offset: 0 })
+  const search = filters.search
+  const pageSize = 50
   const [editor, setEditor] = useState<Book | 'new' | null>(null)
   const [deleting, setDeleting] = useState<Book | null>(null)
   const query = useQuery({ queryKey: ['admin', 'books'], queryFn: () => api<Book[]>('/admin/books') })
   const remove = useMutation({ mutationFn: (book: Book) => api(`/admin/books/${book.id}`, json('DELETE')), onSuccess: async () => { setDeleting(null); toast.success('词书已删除'); await refresh() }, onError: error => toast.error(error.message) })
   const books = useMemo(() => (query.data || []).filter(book => `${book.title} ${book.subtitle} ${book.category}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())), [query.data, search])
+  const offset = books.length ? Math.min(filters.offset, Math.floor((books.length - 1) / pageSize) * pageSize) : 0
+  const page = books.slice(offset, offset + pageSize)
+  useEffect(() => {
+    if (query.data && filters.offset !== offset) setFilters(current => ({ ...current, offset }))
+  }, [query.data, filters.offset, offset])
   const columns: DataGridColumn<Book>[] = [
-    { id: 'title', header: '词书', accessorKey: 'title', allowsSorting: true, isRowHeader: true, minWidth: 230, cell: book => <div className="py-1"><Button variant="ghost" className="h-auto justify-start p-0 font-medium" onPress={() => navigate(`/admin/books/${book.id}`)}>{book.title}</Button><p className="mt-1 text-xs text-muted">{book.subtitle}</p></div> },
-    { id: 'category', header: '分类', accessorKey: 'category', allowsSorting: true, minWidth: 100, cell: book => <Chip size="sm" variant="soft">{book.category || '未分类'}</Chip> },
-    { id: 'wordCount', header: '单词数量', accessorKey: 'wordCount', align: 'end', allowsSorting: true, minWidth: 100, cell: book => <span className="tabular-nums">{count(book.wordCount)} 词</span> },
+    { id: 'title', header: '词书', accessorKey: 'title', isRowHeader: true, minWidth: 230, cell: book => <div className="py-1"><Button variant="ghost" className="h-auto justify-start p-0 font-medium" onPress={() => navigate(`/admin/books/${book.id}`)}>{book.title}</Button><p className="mt-1 text-xs text-muted">{book.subtitle}</p></div> },
+    { id: 'category', header: '分类', accessorKey: 'category', minWidth: 100, cell: book => <Chip size="sm" variant="soft">{book.category || '未分类'}</Chip> },
+    { id: 'wordCount', header: '单词数量', accessorKey: 'wordCount', align: 'end', minWidth: 100, cell: book => <span className="tabular-nums">{count(book.wordCount)} 词</span> },
     { id: 'actions', header: '操作', align: 'end', width: 164, cell: book => <div className="flex items-center justify-end gap-1"><Button size="sm" variant="ghost" onPress={() => navigate(`/admin/books/${book.id}`)}>管理词条</Button><IconButton label={`编辑${book.title}`} size="sm" onPress={() => setEditor(book)}><Pencil /></IconButton><IconButton label={`删除${book.title}`} size="sm" variant="danger-soft" onPress={() => setDeleting(book)}><TrashBin /></IconButton></div> },
   ]
   if (query.isPending) return <Loading label="正在加载词书" />
   if (query.isError) return <Failure error={query.error} retry={query.refetch} />
   return <div className="space-y-6">
     <PageHeading eyebrow="内容管理" title="词书管理" description="整理每一本词书，让好的内容触手可及。" action={<Button onPress={() => setEditor('new')}><Plus />创建词书</Button>} />
-    <div className="flex flex-wrap items-center gap-3"><Input aria-label="搜索词书" placeholder="搜索词书名称、分类" className="w-full max-w-sm" value={search} onChange={event => setSearch(event.target.value)} /><span className="ml-auto text-sm tabular-nums text-muted">{count(books.length)} 本词书 · {count(books.reduce((sum, book) => sum + book.wordCount, 0))} 词</span></div>
-    <DataGrid aria-label="词书管理列表" data={books} columns={columns} getRowId={book => book.id} selectionMode="none" variant="secondary" contentClassName="min-w-[660px]" scrollContainerClassName="max-h-[65vh] overflow-auto" stickyHeader renderEmptyState={() => <Empty title={search ? '没有匹配的词书' : '创建第一本词书'} description={search ? '试试其他名称或分类。' : '创建词书后，可以批量导入你的单词。'} />} />
+    <div className="flex flex-wrap items-center gap-3"><Input aria-label="搜索词书" placeholder="搜索词书名称、分类" className="w-full max-w-sm" value={search} onChange={event => setFilters({ search: event.target.value, offset: 0 })} /><span className="ml-auto text-sm tabular-nums text-muted">{count(books.length)} 本词书 · {count(books.reduce((sum, book) => sum + book.wordCount, 0))} 词</span></div>
+    <DataGrid aria-label="词书管理列表" data={page} columns={columns} getRowId={book => book.id} selectionMode="none" variant="secondary" contentClassName="min-w-[660px]" scrollContainerClassName="max-h-[65vh] overflow-auto" stickyHeader renderEmptyState={() => <Empty title={search ? '没有匹配的词书' : '创建第一本词书'} description={search ? '试试其他名称或分类。' : '创建词书后，可以批量导入你的单词。'} />} />
+    <nav aria-label="词书目录分页" className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm tabular-nums text-muted">{books.length ? `${count(offset + 1)}–${count(offset + page.length)} / ${count(books.length)} 本词书` : '暂无匹配词书'} · 每页 {pageSize} 本</p><div className="flex gap-2"><Button variant="secondary" isDisabled={offset === 0 || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: Math.max(0, offset - pageSize) }))}>上一页</Button><Button variant="secondary" isDisabled={offset + pageSize >= books.length || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: offset + pageSize }))}>下一页</Button></div></nav>
     {editor !== null && <BookEditor book={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} onSaved={book => { const isNew = editor === 'new'; setEditor(null); toast.success(isNew ? '词书已创建，现在可以导入单词' : '词书已更新'); void refresh(); if (isNew) navigate(`/admin/books/${book.id}`) }} />}
     {deleting && <DeleteDialog title={`删除「${deleting.title}」？`} description={`这将删除该词书的 ${deleting.wordCount} 个单词，以及所有用户对应的学习进度和收藏。此操作无法撤销。`} busy={remove.isPending} onCancel={() => setDeleting(null)} onConfirm={() => remove.mutate(deleting)} />}
   </div>
