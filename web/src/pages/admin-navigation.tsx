@@ -23,7 +23,7 @@ function NavigationEditor({ initial }: { initial: NavigationState }) {
   const [reloading, setReloading] = useState(false)
   const [reloadError, setReloadError] = useState('')
   const normalized = items.map((item, index) => ({ ...item, sortOrder: index }))
-  const remoteChanged = initial.version !== draft.value.version
+  const remoteChanged = initial.version > draft.value.version
   const mutation = useMutation({
     mutationFn: () => api<NavigationState>('/admin/navigation', json('PUT', { items: normalized, version: draft.value.version })),
     onSuccess: data => {
@@ -35,7 +35,7 @@ function NavigationEditor({ initial }: { initial: NavigationState }) {
     },
   })
   useEffect(() => {
-    if (!draft.dirty && initial.version !== draft.value.version) draft.reset(initial)
+    if (!draft.dirty && initial.version > draft.value.version) draft.reset(initial)
   }, [initial.version, draft.dirty])
   const update = (id: string, values: Partial<Pick<Navigation, 'label' | 'icon' | 'enabled'>>) => draft.setValue(current => ({ ...current, items: current.items.map(item => item.id === id ? { ...item, ...values } : item) }))
   const move = (index: number, direction: -1 | 1) => draft.setValue(current => {
