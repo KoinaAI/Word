@@ -20,7 +20,7 @@ COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND COALESCE(p.status,'new')<>'mastered'
 COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND COALESCE(p.status,'new')='new' AND COALESCE(lp.stage,0)=0 THEN 1 ELSE 0 END),0)
 FROM books b LEFT JOIN words w ON w.book_id=b.id LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
 const wordJoins = ` FROM words w LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
-const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version` + wordJoins
+const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version,COALESCE((SELECT revision FROM favorite_revisions fr WHERE fr.user_id=? AND fr.word_id=w.id),0)` + wordJoins
 
 type scanner interface{ Scan(...any) error }
 
@@ -31,7 +31,7 @@ func scanBook(s scanner) (Book, error) {
 }
 func scanWord(s scanner) (Word, error) {
 	w := Word{}
-	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt, &w.LearnStage, &w.LearnRevision, &w.ContentVersion)
+	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt, &w.LearnStage, &w.LearnRevision, &w.ContentVersion, &w.FavoriteRevision)
 	return w, e
 }
 func currentID(r *http.Request) int64 {
@@ -44,7 +44,7 @@ func (a *App) readBook(ctx context.Context, id, userID int64) (Book, error) {
 	return scanBook(a.db.QueryRowContext(ctx, bookColumns+"WHERE b.id=? GROUP BY b.id", stamp(time.Now()), userID, userID, id))
 }
 func (a *App) readWords(ctx context.Context, userID int64, where string, args ...any) ([]Word, error) {
-	params := []any{userID, userID, userID}
+	params := []any{userID, userID, userID, userID}
 	params = append(params, args...)
 	rows, e := a.db.QueryContext(ctx, wordColumns+where, params...)
 	if e != nil {
@@ -272,7 +272,7 @@ func (a *App) quizVocabulary(ctx context.Context, bookID int64, targets []Word) 
 			break
 		}
 		seen[word.ID] = true
-		pool = append(pool, Word{ID: word.ID, BookID: word.BookID, Text: word.Text, Meaning: word.Meaning, ContentVersion: word.ContentVersion, Favorite: word.Favorite})
+		pool = append(pool, Word{ID: word.ID, BookID: word.BookID, Text: word.Text, Meaning: word.Meaning, ContentVersion: word.ContentVersion, Favorite: word.Favorite, FavoriteRevision: word.FavoriteRevision})
 	}
 	rows, e := a.db.QueryContext(ctx, "SELECT id,book_id,text,meaning,content_version FROM words WHERE book_id=? ORDER BY id LIMIT 200", bookID)
 	if e != nil {
@@ -591,7 +591,7 @@ func (a *App) favorites(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
-	selectCols := `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,1,COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version`
+	selectCols := `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,1,COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version,COALESCE((SELECT revision FROM favorite_revisions fr WHERE fr.user_id=selected.user_id AND fr.word_id=w.id),0)`
 	rows, e := a.db.QueryContext(r.Context(), selectCols+from+" ORDER BY w.id LIMIT ? OFFSET ?", append(args, limit, offset)...)
 	if e != nil {
 		internal(w, e)
@@ -617,23 +617,17 @@ func (a *App) favorites(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, words)
 	}
 }
-func (a *App) favorite(w http.ResponseWriter, r *http.Request) {
+
+// favoriteState reads the saved bit and its durable revision in the same snapshot.
+// Revisions remain present after removals so stale writes cannot recreate a word.
+func (a *App) favoriteState(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
-	var req struct {
-		Favorite *bool `json:"favorite"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if req.Favorite == nil {
-		fail(w, 400, "favorite 字段必填")
-		return
-	}
-	var exists int
-	e := a.db.QueryRowContext(r.Context(), "SELECT 1 FROM words WHERE id=?", id).Scan(&exists)
+	var favorite bool
+	var revision int64
+	e := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.word_id=w.id),COALESCE((SELECT revision FROM favorite_revisions fr WHERE fr.user_id=? AND fr.word_id=w.id),0) FROM words w WHERE w.id=?`, currentID(r), currentID(r), id).Scan(&favorite, &revision)
 	if errors.Is(e, sql.ErrNoRows) {
 		fail(w, 404, "单词不存在")
 		return
@@ -642,16 +636,69 @@ func (a *App) favorite(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
-	if *req.Favorite {
-		_, e = a.db.ExecContext(r.Context(), "INSERT OR IGNORE INTO favorites(user_id,word_id) VALUES(?,?)", currentID(r), id)
-	} else {
-		_, e = a.db.ExecContext(r.Context(), "DELETE FROM favorites WHERE user_id=? AND word_id=?", currentID(r), id)
+	writeJSON(w, 200, map[string]any{"wordId": id, "favorite": favorite, "revision": revision})
+}
+
+// favorite applies a compare-and-swap when expectedRevision is supplied. Even a
+// no-op advances the fence: a later "remove" must invalidate an older pending
+// "add" when both originally observed an absent favorite.
+func (a *App) favorite(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Favorite         *bool  `json:"favorite"`
+		ExpectedRevision *int64 `json:"expectedRevision"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Favorite == nil || (req.ExpectedRevision != nil && (*req.ExpectedRevision < 0 || *req.ExpectedRevision >= 9007199254740991)) {
+		fail(w, 400, "favorite 和收藏版本参数无效")
+		return
+	}
+	tx, e := a.db.BeginTx(r.Context(), nil)
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	defer tx.Rollback()
+	userID := currentID(r)
+	var favorite bool
+	var revision int64
+	e = tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.word_id=w.id),COALESCE((SELECT revision FROM favorite_revisions fr WHERE fr.user_id=? AND fr.word_id=w.id),0) FROM words w WHERE w.id=?`, userID, userID, id).Scan(&favorite, &revision)
+	if errors.Is(e, sql.ErrNoRows) {
+		fail(w, 404, "单词不存在")
+		return
 	}
 	if e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"ok": true})
+	if req.ExpectedRevision != nil && *req.ExpectedRevision != revision {
+		writeJSON(w, 409, map[string]any{"error": "收藏状态已更新，请重新确认", "favorite": favorite, "revision": revision})
+		return
+	}
+	next := revision + 1
+	if _, e = tx.ExecContext(r.Context(), "INSERT INTO favorite_revisions(user_id,word_id,revision) VALUES(?,?,?) ON CONFLICT(user_id,word_id) DO UPDATE SET revision=excluded.revision", userID, id, next); e != nil {
+		internal(w, e)
+		return
+	}
+	if *req.Favorite {
+		_, e = tx.ExecContext(r.Context(), "INSERT OR IGNORE INTO favorites(user_id,word_id) VALUES(?,?)", userID, id)
+	} else {
+		_, e = tx.ExecContext(r.Context(), "DELETE FROM favorites WHERE user_id=? AND word_id=?", userID, id)
+	}
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	if e = tx.Commit(); e != nil {
+		internal(w, e)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "favorite": *req.Favorite, "revision": next})
 }
 
 // Snapshots retain absence as well as values: undoing a first-ever sprint must

@@ -30,20 +30,21 @@ type Book struct {
 }
 
 type Word struct {
-	ID             int64  `json:"id"`
-	BookID         int64  `json:"bookId"`
-	Text           string `json:"text"`
-	Phonetic       string `json:"phonetic"`
-	Meaning        string `json:"meaning"`
-	Example        string `json:"example"`
-	ExampleMeaning string `json:"exampleMeaning"`
-	Favorite       bool   `json:"favorite"`
-	Status         string `json:"status"`
-	Reinforce      bool   `json:"reinforce"`
-	DueAt          string `json:"dueAt,omitempty"`
-	LearnStage     int    `json:"learnStage"`
-	LearnRevision  int64  `json:"learnRevision"`
-	ContentVersion int64  `json:"contentVersion"`
+	ID               int64  `json:"id"`
+	BookID           int64  `json:"bookId"`
+	Text             string `json:"text"`
+	Phonetic         string `json:"phonetic"`
+	Meaning          string `json:"meaning"`
+	Example          string `json:"example"`
+	ExampleMeaning   string `json:"exampleMeaning"`
+	Favorite         bool   `json:"favorite"`
+	FavoriteRevision int64  `json:"favoriteRevision"`
+	Status           string `json:"status"`
+	Reinforce        bool   `json:"reinforce"`
+	DueAt            string `json:"dueAt,omitempty"`
+	LearnStage       int    `json:"learnStage"`
+	LearnRevision    int64  `json:"learnRevision"`
+	ContentVersion   int64  `json:"contentVersion"`
 }
 
 type Navigation struct {

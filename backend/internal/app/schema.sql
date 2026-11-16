@@ -63,3 +63,11 @@ CREATE TABLE IF NOT EXISTS sprint_undo (
  undone INTEGER NOT NULL DEFAULT 0 CHECK(undone IN(0,1))
 );
 CREATE INDEX IF NOT EXISTS answers_word_event ON answers(user_id,submitted_word_id,id);
+
+CREATE TABLE IF NOT EXISTS favorite_revisions (
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+ PRIMARY KEY(user_id,word_id)
+);
+CREATE INDEX IF NOT EXISTS favorite_revisions_word ON favorite_revisions(word_id);

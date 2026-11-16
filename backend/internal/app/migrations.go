@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 // migrate upgrades legacy stores atomically on a single connection. Foreign keys
 // must be disabled before the transaction while parent tables are rebuilt; the
@@ -100,6 +100,16 @@ func (a *App) migrate() (resultErr error) {
 			}
 		}
 		if _, err = tx.Exec("PRAGMA user_version=1"); err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		// Version rows outlive removing a favorite so an old request cannot recreate
+		// it after a newer removal (the ABA case). Existing saved items start at v1.
+		if _, err = tx.Exec("INSERT OR IGNORE INTO favorite_revisions(user_id,word_id,revision) SELECT user_id,word_id,1 FROM favorites"); err != nil {
+			return err
+		}
+		if _, err = tx.Exec("PRAGMA user_version=2"); err != nil {
 			return err
 		}
 	}
