@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { advanceQuizRound, createQuizQuestion, createQuizRound, normalizeSpelling, quizProgress, recordQuizAnswer, summarizeQuizRound } from '../src/lib/study-quiz.ts'
+import { advanceQuizRound, createQuizQuestion, createQuizRound, isCorrectSpelling, normalizeSpelling, quizProgress, recordQuizAnswer, summarizeQuizRound } from '../src/lib/study-quiz.ts'
 import type { Word } from '../src/lib/types.ts'
 
 const word = (id: number, text: string, meaning: string): Word => ({ id, text, meaning, bookId: 1, phonetic: '', example: '', exampleMeaning: '', favorite: false, status: 'new', reinforce: false })
@@ -32,6 +32,25 @@ test('filters repeated spellings and overlapping Chinese senses in both directio
   const spaced = word(12, 'achieve', 'v. 达成; v. 实现')
   const question = createQuizQuestion(spaced, [spaced, word(13, 'realize', 'v. 实现'), ...vocabulary.slice(1)], 'zh-en', false, stableRandom)
   assert.equal(question.options.some(option => option.id === 13), false)
+})
+
+test('normalizes common POS forms and accepts exact equivalent spellings', () => {
+  const target = word(1, 'quick', 'adj. 快速的')
+  const question = createQuizQuestion(target, [target, word(2, 'fast', 'a. 快速的'), ...vocabulary.slice(1)], 'zh-en', false, stableRandom)
+  assert.equal(question.options.some(option => option.id === 2), false)
+  const typing = createQuizQuestion(target, [target, word(3, 'fast', 'a. 快速的')], 'zh-en', false, stableRandom)
+  assert.equal(typing.kind, 'typing')
+  assert.equal(isCorrectSpelling(typing, 'fast'), true)
+  assert.equal(isCorrectSpelling(typing, 'FAST'), true)
+  assert.equal(isCorrectSpelling(typing, 'rapid'), false)
+  assert.match(typing.spellingHint, /一个可接受的答案以/) 
+})
+
+test('deduplicates large queues without quadratic first-pass scans', () => {
+  const large = Array.from({ length: 2000 }, (_, index) => word(index + 1, `word-${index}`, `释义 ${index}`))
+  const round = createQuizRound([...large, ...large], large, stableRandom)
+  assert.equal(round.questions.length, large.length)
+  assert.equal(round.wordCount, large.length)
 })
 
 test('small books use genuine available choices or spelling instead of invented distractors', () => {

@@ -1,5 +1,5 @@
-import { createQuizQuestion } from './study-quiz.ts'
-import type { QuizQuestion, QuizResult, QuizRound } from './study-quiz.ts'
+import { createQuizQuestion, prepareQuizPool } from './study-quiz.ts'
+import type { PreparedQuizPool, QuizQuestion, QuizResult, QuizRound } from './study-quiz.ts'
 import type { Word } from './types.ts'
 
 export type LearnQuestion = QuizQuestion & { learnStage: 0 | 1; learnRevision: number }
@@ -11,7 +11,7 @@ export type LearnRound = Omit<QuizRound, 'questions' | 'results'> & {
   results: LearnResult[]
 }
 
-function createLearnQuestion(word: Word, pool: Word[], stage: 0 | 1, revision: number, random: () => number): LearnQuestion {
+function createLearnQuestion(word: Word, pool: Word[] | PreparedQuizPool, stage: 0 | 1, revision: number, random: () => number): LearnQuestion {
   const snapshot = { ...word, learnStage: stage, learnRevision: revision }
   const question = createQuizQuestion(snapshot, pool, stage === 0 ? 'en-zh' : 'zh-en', revision > stage, random)
   // Recognition must remain the first step even when the book has no honest distractor.
@@ -28,13 +28,14 @@ function createLearnQuestion(word: Word, pool: Word[], stage: 0 | 1, revision: n
 export function createLearnRound(words: Word[], pool: Word[], random = Math.random): LearnRound {
   const seen = new Set<number>()
   const questions: LearnQuestion[] = []
+  const preparedPool = prepareQuizPool([...words, ...pool])
   for (const word of words) {
     if (seen.has(word.id)) continue
     seen.add(word.id)
     if (word.learnStage === 2) continue
-    questions.push(createLearnQuestion(word, pool, word.learnStage ?? 0, word.learnRevision ?? 0, random))
+    questions.push(createLearnQuestion(word, preparedPool, word.learnStage ?? 0, word.learnRevision ?? 0, random))
   }
-  return { kind: 'learn', questions, cursor: 0, results: [], wordCount: questions.length }
+  return { kind: 'learn', questions, cursor: 0, results: [], wordCount: questions.length, preparedPool }
 }
 
 /** Check that a server acknowledgement confirms exactly this stage and revision transition. */
@@ -52,7 +53,7 @@ export function recordLearnAnswer(round: LearnRound, key: string, correct: boole
   const question = round.questions[round.cursor]
   if (!question || question.key !== key || round.results.some(result => result.key === key)
     || !isLearnAnswerResponse(question, correct, response)) return round
-  const next = response.learnStage === 2 ? [] : [createLearnQuestion(question.word, pool, response.learnStage, response.learnRevision, random)]
+  const next = response.learnStage === 2 ? [] : [createLearnQuestion(question.word, round.preparedPool || pool, response.learnStage, response.learnRevision, random)]
   return {
     ...round,
     questions: [...round.questions, ...next],
