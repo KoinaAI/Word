@@ -9,6 +9,7 @@ import { ApiError, api, getSessionEpoch, json, useUser } from '@/lib/api'
 import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
 import { saveFavoriteCAS } from '@/lib/favorite-request'
 import { pronounce, stopPronunciation } from '@/lib/speech'
+import { readPreference } from '@/lib/preferences'
 import { completeStudyAnswer, createStudyEventId, createStudyRound, studyAnswer, summarizeStudyRound, undoStudyAnswer } from '@/lib/study-flow'
 import type { StudyDecision } from '@/lib/study-flow'
 import type { Answer, Book, Mode, Study, User, Word } from '@/lib/types'
@@ -166,7 +167,7 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
 
   useEffect(() => {
     // Reading a Chinese prompt aloud would disclose the answer before the learner has chosen.
-    if (question && audioAllowed && localStorage.getItem('word-auto-audio') === 'true') pronounce(question.word.text)
+    if (question && audioAllowed && readPreference('word-auto-audio', 'false') === 'true') pronounce(question.word.text)
     return stopPronunciation
   }, [question?.key, audioAllowed])
 
@@ -440,7 +441,7 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   }, [lastConfirmed])
 
   useEffect(() => {
-    if (word && localStorage.getItem('word-auto-audio') === 'true') pronounce(word.text)
+    if (word && readPreference('word-auto-audio', 'false') === 'true') pronounce(word.text)
     return stopPronunciation
   }, [word?.id])
 

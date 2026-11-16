@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { readPreference } from './preferences'
 
 let player: HTMLAudioElement | undefined
 let playbackId = 0
@@ -14,7 +15,7 @@ export function stopPronunciation() {
 }
 
 /** Play Youdao pronunciation: type 0 is American English; type 1 is British English. */
-export function pronounce(text: string, accent = localStorage.getItem('word-accent') || 'en-US') {
+export function pronounce(text: string, accent = readPreference('word-accent', 'en-US')) {
   stopPronunciation()
   const word = text.trim()
   if (!word) return

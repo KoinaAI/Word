@@ -7,6 +7,7 @@ import { ArrowRight, BookOpen, Check, Gear, ShieldCheck, Volume } from '@gravity
 import { toast } from 'sonner'
 import { ApiError, api, clearAuthSession, json, syncAuthUser, useUser } from '@/lib/api'
 import { pronounce } from '@/lib/speech'
+import { readPreference, writePreference } from '@/lib/preferences'
 import { validatePassword, validateProfileName } from '@/lib/form-validation'
 import { useFormDraft } from '@/hooks/use-form-draft'
 import type { Navigation, User } from '@/lib/types'
@@ -29,8 +30,8 @@ function SettingsForm({ user }: { user: User }) {
   }, [user.name, user.dailyGoal, user.examDate])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const [autoAudio, setAutoAudio] = useState(localStorage.getItem('word-auto-audio') === 'true')
-  const [accent, setAccent] = useState(localStorage.getItem('word-accent') || 'en-US')
+  const [autoAudio, setAutoAudio] = useState(() => readPreference('word-auto-audio', 'false') === 'true')
+  const [accent, setAccent] = useState(() => readPreference('word-accent', 'en-US'))
   const nameError = validateProfileName(name)
   const goalNumber = Number(goal)
   const goalError = !goal.trim() || !Number.isInteger(goalNumber) || goalNumber < 1 || goalNumber > 500 ? '请输入 1–500 之间的整数。' : ''
@@ -59,7 +60,7 @@ function SettingsForm({ user }: { user: User }) {
     <TextField isDisabled={pending}><Label>目标考试日期（选填）</Label><Input type="date" variant="secondary" value={exam} onChange={event => change({ exam: event.target.value })} /><p className="text-xs text-muted mt-2">用一个明确的日子，给努力一个方向。</p></TextField>
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </Card.Content><Card.Footer className="flex-wrap gap-3"><Button type="submit" isPending={pending} isDisabled={!draft.dirty || Boolean(nameError || goalError)}>保存计划 <Check /></Button>{draft.dirty && <Button variant="ghost" isDisabled={pending} onPress={() => draft.reset()}>撤销修改</Button>}<p className="text-xs text-muted">未保存修改会暂存于当前标签页。</p></Card.Footer></Card></form>
-  <Card><Card.Header className="pronunciation-header"><Card.Title>发音偏好</Card.Title><Button variant="outline" onPress={() => pronounce('possibility', accent)}><Volume />试听发音</Button></Card.Header><Card.Content className="space-y-6"><div className="settings-row"><div><h3>英语口音</h3><p>使用有道单词发音</p></div><Segment className="word-segment" aria-label="英语口音" selectedKey={accent} onSelectionChange={key => { const value = String(key); setAccent(value); localStorage.setItem('word-accent', value) }}><Segment.Item id="en-US">美式</Segment.Item><Segment.Item id="en-GB">英式</Segment.Item></Segment></div><div className="settings-row"><div><h3>自动发音</h3><p>英译中与速刷自动朗读；中译英答后发音</p></div><Switch aria-label="自动发音" isSelected={autoAudio} onChange={selected => { setAutoAudio(selected); localStorage.setItem('word-auto-audio', String(selected)) }}><Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control></Switch.Content></Switch></div></Card.Content></Card>
+  <Card><Card.Header className="pronunciation-header"><Card.Title>发音偏好</Card.Title><Button variant="outline" onPress={() => pronounce('possibility', accent)}><Volume />试听发音</Button></Card.Header><Card.Content className="space-y-6"><div className="settings-row"><div><h3>英语口音</h3><p>使用有道单词发音</p></div><Segment className="word-segment" aria-label="英语口音" selectedKey={accent} onSelectionChange={key => { const value = String(key); setAccent(value); writePreference('word-accent', value) }}><Segment.Item id="en-US">美式</Segment.Item><Segment.Item id="en-GB">英式</Segment.Item></Segment></div><div className="settings-row"><div><h3>自动发音</h3><p>英译中与速刷自动朗读；中译英答后发音</p></div><Switch aria-label="自动发音" isSelected={autoAudio} onChange={selected => { setAutoAudio(selected); writePreference('word-auto-audio', String(selected)) }}><Switch.Content><Switch.Control><Switch.Thumb /></Switch.Control></Switch.Content></Switch></div></Card.Content></Card>
   <Card><Card.Header><Card.Title>我的账号</Card.Title></Card.Header><Card.Content className="settings-row settings-account"><div><h3>{user.name} <Chip size="sm" variant="soft">{user.guest ? '访客' : user.role === 'admin' ? '管理员' : '学习者'}</Chip></h3><p>{user.guest ? '访客进度随当前浏览器会话保存，注册后可跨设备登录。' : user.email}</p></div><Button variant="outline" onPress={() => navigate(user.guest ? '/login?mode=register' : '/login')}>{user.guest ? '注册保留进度' : '切换账号'}</Button></Card.Content></Card></div>
 }
 
