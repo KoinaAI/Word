@@ -131,7 +131,14 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
     const owner = client.getQueryData<User>(['me'])?.id
     const previous = overrides.get(word.id) ?? word.favorite
     const favorite = !previous
-    const affected = { predicate: (query: { queryKey: readonly unknown[]; state: { data: unknown } }) => ['books', 'favorites', 'study', 'admin'].includes(String(query.queryKey[0])) && (patchWordFavorite(query.state.data, word.id, true) !== query.state.data || patchWordFavorite(query.state.data, word.id, false) !== query.state.data) }
+    const affected = { predicate: (query: { queryKey: readonly unknown[]; state: { data: unknown } }) => {
+      const [scope, bookId] = query.queryKey
+      // A page opened during this write may not have data yet. Include its key so
+      // an earlier server snapshot cannot arrive after the confirmed mutation.
+      if (scope === 'favorites') return true
+      if (scope === 'books' && String(bookId) === String(word.bookId)) return true
+      return ['study', 'admin'].includes(String(scope)) && (patchWordFavorite(query.state.data, word.id, true) !== query.state.data || patchWordFavorite(query.state.data, word.id, false) !== query.state.data)
+    } }
     const patch = (value: boolean) => client.setQueriesData(affected, data => patchWordFavorite(data, word.id, value))
     pending.current.add(word.id)
     setPendingIds(new Set(pending.current))
@@ -145,11 +152,13 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
       if (client.getQueryData<User>(['me'])?.id !== owner) return
       await client.cancelQueries(affected)
       patch(favorite)
-      void client.invalidateQueries({ queryKey: ['favorites'] })
+      void client.invalidateQueries(affected)
       void client.invalidateQueries({ queryKey: ['stats'] })
     } catch (e) {
       if (client.getQueryData<User>(['me'])?.id !== owner) return
+      await client.cancelQueries(affected)
       patch(previous)
+      void client.invalidateQueries(affected)
       setOverrides(current => new Map(current).set(word.id, previous))
       toast.error((e as Error).message)
     } finally {
