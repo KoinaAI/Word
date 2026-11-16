@@ -7,7 +7,7 @@ import { Button, Card, Input, TextField } from '@heroui/react'
 import { Empty, Failure, IconButton, Loading, Progress } from '@/components/shared'
 import { ApiError, api, getSessionEpoch, json, useUser } from '@/lib/api'
 import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
-import { saveFavorite } from '@/lib/favorite-request'
+import { saveFavoriteCAS } from '@/lib/favorite-request'
 import { pronounce, stopPronunciation } from '@/lib/speech'
 import { completeStudyAnswer, createStudyEventId, createStudyRound, studyAnswer, summarizeStudyRound, undoStudyAnswer } from '@/lib/study-flow'
 import type { StudyDecision } from '@/lib/study-flow'
@@ -259,7 +259,7 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
     const mutation = enqueueFavoriteMutation({
       scope: client, userId, wordId, epoch, favorite,
       isCurrent,
-      send: nextFavorite => saveFavorite(wordId, nextFavorite, isCurrent),
+      send: nextFavorite => saveFavoriteCAS(api, wordId, nextFavorite, isCurrent),
     })
     favoriteRequests.current.add(wordId)
     setPendingFavoriteIds(new Set(favoriteRequests.current))
