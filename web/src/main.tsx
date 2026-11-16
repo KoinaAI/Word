@@ -35,6 +35,27 @@ function App() {
   const { pathname } = useLocation()
   const session = useSessionBoundary()
   useEffect(() => stopPronunciation, [pathname, session.epoch])
+  useEffect(() => {
+    const labels: Record<string, string> = { '/': '学习概览', '/books': '发现词书', '/sprint': '临考速刷', '/review': '记忆复习', '/favorites': '收藏单词', '/statistics': '学习统计', '/settings': '学习设置', '/login': '登录与注册', '/admin': '管理后台' }
+    document.title = `${labels[pathname] || (pathname.startsWith('/study/') ? '单词练习' : pathname.startsWith('/admin/') ? '管理后台' : '词书详情')} · 就背单词`
+    // Lazy routes may mount after this effect. Focus once when their heading exists.
+    let completed = false
+    const move = () => {
+      if (completed) return
+      const heading = document.querySelector<HTMLElement>('#page-content h1, main h1, .auth-form h2')
+      if (!heading) return
+      completed = true
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+      const title = heading.textContent?.trim()
+      if (title) document.title = `${title} · 就背单词`
+      observer.disconnect()
+    }
+    const observer = new MutationObserver(move)
+    observer.observe(document.getElementById('root')!, { childList: true, subtree: true })
+    move()
+    return () => observer.disconnect()
+  }, [pathname, session.epoch])
   if (session.checking) return <ReconnectSession key={session.epoch} />
   return <RouteBoundary key={`${session.epoch}:${pathname}`}><Suspense fallback={<Loading />}><Routes><Route path="/login" element={<LoginPage />} /><Route path="/study/:bookId/:mode" element={<StudyPage />} /><Route element={<Layout />}><Route index element={<HomePage />} /><Route path="books" element={<BooksPage />} /><Route path="books/:bookId" element={<BookDetailPage />} /><Route path="sprint" element={<ModePicker mode="sprint" />} /><Route path="review" element={<ModePicker mode="review" />} /><Route path="favorites" element={<FavoritesPage />} /><Route path="statistics" element={<StatisticsPage />} /><Route path="settings" element={<SettingsPage />} /><Route path="admin/*" element={<AdminPage />} /><Route path="*" element={<MissingPage />} /></Route></Routes></Suspense></RouteBoundary>
 }

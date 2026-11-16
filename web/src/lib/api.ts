@@ -89,7 +89,8 @@ export async function apiResponse<T>(path: string, options: ApiOptions = {}): Pr
     const load = async () => {
       if (path === '/me' && typeof navigator !== 'undefined' && navigator.locks) headers.set('X-Word-Session-Renew', '1')
       const response = await fetch(`/api${path}`, { ...init, credentials: 'same-origin', headers, signal: controller.signal })
-      const payload = await response.json().catch(() => ({ error: '服务返回了无效响应，请稍后再试。' }))
+      const raw: unknown = await response.json().catch(() => ({ error: '服务返回了无效响应，请稍后再试。' }))
+      const payload = raw && typeof raw === 'object' ? raw as Record<string, unknown> : { error: '服务返回了无效响应，请稍后再试。' }
       return { response, payload }
     }
     // Cookie-setting requests share one cross-tab lock so a late renewal cannot undo a login.
@@ -103,10 +104,10 @@ export async function apiResponse<T>(path: string, options: ApiOptions = {}): Pr
         invalidateSession()
         throw changedAccount()
       }
-      throw new ApiError(payload.error || '请求失败，请稍后再试。', response.status, payload.code, payload)
+      throw new ApiError(typeof payload.error === 'string' ? payload.error : '请求失败，请稍后再试。', response.status, typeof payload.code === 'string' ? payload.code : undefined, payload)
     }
     if (path === '/me' || path === '/auth/guest') {
-      const user = payload as User
+      const user = payload as unknown as User
       if (expectedUserId != null && expectedUserId !== user.id) {
         invalidateSession()
         throw changedAccount()

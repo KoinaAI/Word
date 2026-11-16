@@ -1,11 +1,8 @@
-import type { ComponentProps, ReactNode, CSSProperties } from 'react'
+import { lazy, Suspense, type ComponentProps, type ReactNode, type CSSProperties } from 'react'
 import { Button, Card, Chip, ProgressBar, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
-import { KPI } from '@heroui-pro/react/kpi'
-import { AreaChart } from '@heroui-pro/react/area-chart'
 import { BookOpen, ArrowRotateLeft, CircleExclamation } from '@gravity-ui/icons'
 import type { Activity, Book } from '@/lib/types'
-import { dayLabel } from '@/lib/utils'
 
 export function PageHeading({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: ReactNode }) {
   return <header className="page-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{description && <p className="page-description">{description}</p>}</div>{action}</header>
@@ -25,11 +22,13 @@ export function Failure({ error, retry }: { error: Error | null; retry?: () => u
 export function Empty({ title, description, action, icon }: { title: string; description: string; action?: ReactNode; icon?: ReactNode }) {
   return <EmptyState className="empty-content"><EmptyState.Media variant="icon">{icon || <BookOpen />}</EmptyState.Media><EmptyState.Header><EmptyState.Title>{title}</EmptyState.Title><EmptyState.Description>{description}</EmptyState.Description></EmptyState.Header>{action && <EmptyState.Content>{action}</EmptyState.Content>}</EmptyState>
 }
-export function Stat({ title, value, foot, icon }: { title: string; value: number; foot: string; icon: ReactNode }) {
-  return <KPI className="metric-card"><KPI.Header><KPI.Title>{title}</KPI.Title><span className="metric-icon">{icon}</span></KPI.Header><KPI.Content><KPI.Value value={value} /></KPI.Content><KPI.Footer>{foot}</KPI.Footer></KPI>
+const DeferredStat = lazy(() => import('./stat-card').then(module => ({ default: module.StatCard })))
+const DeferredActivity = lazy(() => import('./activity-chart').then(module => ({ default: module.ActivityChart })))
+export function Stat(props: { title: string; value: number; foot: string; icon: ReactNode }) {
+  return <Suspense fallback={<div className="metric-card metric-placeholder"><span>{props.title}</span><strong>{props.value}</strong><small>{props.foot}</small></div>}><DeferredStat {...props} /></Suspense>
 }
 export function ActivityChart({ activity }: { activity: Activity[] }) {
-  return <AreaChart data={activity.map(item => ({ ...item, date: dayLabel(item.date) }))} height={190} margin={{ left: -28, right: 6, top: 18, bottom: 0 }}><defs><linearGradient id="activity-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.19} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs><AreaChart.Grid vertical={false} strokeDasharray="3 4" /><AreaChart.XAxis dataKey="date" minTickGap={28} tickMargin={10} /><AreaChart.YAxis allowDecimals={false} tickCount={4} /><AreaChart.Area dataKey="count" name="学习次数" type="monotone" stroke="var(--accent)" strokeWidth={2.5} fill="url(#activity-fill)" isAnimationActive={false} /><AreaChart.Tooltip content={<AreaChart.TooltipContent />} /></AreaChart>
+  return <Suspense fallback={<div className="chart-placeholder" role="status">正在准备学习图表…</div>}><DeferredActivity activity={activity} /></Suspense>
 }
 const coverColors = ['#3e6c70', '#7770a0', '#b37350', '#527864', '#697d9c', '#a27686']
 export function BookCover({ book, small = false }: { book: Book; small?: boolean }) {
