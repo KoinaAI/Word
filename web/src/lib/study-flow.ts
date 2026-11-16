@@ -1,7 +1,7 @@
-import type { Answer, Mode, Word } from './types'
+import type { Answer, Mode, Word } from './types.ts'
 
 export type StudyDecision = 'known' | 'unknown'
-export type StudyResult = { word: Word; answer: Answer }
+export type StudyResult = { word: Word; answer: Answer; eventId: string }
 export type StudyRound = { words: Word[]; cursor: number; results: StudyResult[]; number: number }
 
 /** Keep a stable queue for this round even when other queries refresh. */
@@ -16,10 +16,17 @@ export function studyAnswer(mode: Mode, revealed: boolean, decision: StudyDecisi
 }
 
 /** Advance only the exact word whose server response has been confirmed. */
-export function completeStudyAnswer(round: StudyRound, wordId: number, answer: Answer): StudyRound {
+export function completeStudyAnswer(round: StudyRound, wordId: number, answer: Answer, eventId = ''): StudyRound {
   const word = round.words[round.cursor]
   if (!word || word.id !== wordId) return round
-  return { ...round, cursor: round.cursor + 1, results: [...round.results, { word, answer }] }
+  return { ...round, cursor: round.cursor + 1, results: [...round.results, { word, answer, eventId }] }
+}
+
+/** Rewind only the last locally displayed answer after the server confirms the same event. */
+export function undoStudyAnswer(round: StudyRound, eventId: string): StudyRound {
+  const last = round.results.at(-1)
+  if (!last || last.eventId !== eventId || round.cursor !== round.results.length) return round
+  return { ...round, cursor: round.cursor - 1, results: round.results.slice(0, -1) }
 }
 
 export function summarizeStudyRound(round: StudyRound) {
