@@ -119,13 +119,6 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
   const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set())
   const [overrides, setOverrides] = useState<Map<number, boolean>>(() => new Map())
   const pending = useRef(new Set<number>())
-  useEffect(() => {
-    setOverrides(current => {
-      const next = new Map(current)
-      for (const word of words) if (!pending.current.has(word.id) && next.get(word.id) === word.favorite) next.delete(word.id)
-      return next.size === current.size ? current : next
-    })
-  }, [words, pendingIds])
   const toggle = async (word: Word) => {
     if (disabled || pending.current.has(word.id)) return
     const owner = client.getQueryData<User>(['me'])?.id
@@ -159,11 +152,11 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
       await client.cancelQueries(affected)
       patch(previous)
       void client.invalidateQueries(affected)
-      setOverrides(current => new Map(current).set(word.id, previous))
       toast.error((e as Error).message)
     } finally {
       pending.current.delete(word.id)
       setPendingIds(new Set(pending.current))
+      setOverrides(current => { const next = new Map(current); next.delete(word.id); return next })
     }
   }
   if (!words.length) return <Empty title="这里暂时没有单词" description="开始学习或调整筛选，新的积累很快就会出现。" />
