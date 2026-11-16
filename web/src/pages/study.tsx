@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'motion/react'
 import { ArrowLeft, ArrowRight, ArrowRotateLeft, BookOpen, Check, ChevronDown, ChevronUp, Star, Volume, Xmark } from '@gravity-ui/icons'
 import { Button, Card, Input, TextField } from '@heroui/react'
@@ -87,8 +87,9 @@ function StudyLoader({ bookId, mode, userId }: { bookId: number; mode: Mode; use
   const [confirming, setConfirming] = useState(false)
   const [recoveryError, setRecoveryError] = useState<Error | null>(null)
   const recoveryRequest = useRef<AbortController | null>(null)
+  const studyQueryKey = ['study', userId, bookId, mode, sessionId, generation, after]
   const study = useQuery({
-    queryKey: ['study', userId, bookId, mode, sessionId, generation, after],
+    queryKey: studyQueryKey,
     queryFn: ({ signal }) => api<StudyBatch>(`/study?bookId=${bookId}&mode=${mode}&limit=100&after=${after}`, { signal }),
     enabled: !pending,
     staleTime: Infinity,
@@ -121,13 +122,13 @@ function StudyLoader({ bookId, mode, userId }: { bookId: number; mode: Mode; use
   }
   return mode === 'sprint'
     ? <SprintSession key={generation} initialStudy={study.data} pendingKey={pendingKey} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
-    : <QuizSession key={generation} initialStudy={study.data} vocabulary={study.data.vocabulary || study.data.words} pendingKey={pendingKey} userId={userId} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
+    : <QuizSession key={generation} initialStudy={study.data} vocabulary={study.data.vocabulary || study.data.words} studyQueryKey={studyQueryKey} pendingKey={pendingKey} userId={userId} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
 }
 
 type QuizFeedback = { correct: boolean; selectedId?: number; spelling?: string }
 type QuizTransaction = { payload: Submission; questionKey: string; correct: boolean }
 
-function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit, reload, nextBatch }: { initialStudy: StudyBatch; vocabulary: Word[]; pendingKey: string; userId: number; mode: Mode; exit: () => void; reload: () => void; nextBatch: () => void }) {
+function QuizSession({ initialStudy, vocabulary, studyQueryKey, pendingKey, userId, mode, exit, reload, nextBatch }: { initialStudy: StudyBatch; vocabulary: Word[]; studyQueryKey: QueryKey; pendingKey: string; userId: number; mode: Mode; exit: () => void; reload: () => void; nextBatch: () => void }) {
   const navigate = useNavigate()
   const client = useQueryClient()
   const reduceMotion = useReducedMotion()
@@ -136,7 +137,6 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
   const [spelling, setSpelling] = useState('')
   const [showOptions, setShowOptions] = useState(false)
   const [recapExpanded, setRecapExpanded] = useState(false)
-  const [favoriteIds, setFavoriteIds] = useState(() => new Set(initialStudy.words.filter(word => word.favorite).map(word => word.id)))
   const [pendingFavoriteIds, setPendingFavoriteIds] = useState<Set<number>>(() => new Set())
   const favoriteRequests = useRef(new Set<number>())
   const [saving, setSaving] = useState(false)
@@ -251,11 +251,17 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
     setShowOptions(false)
   }
 
+  function favoriteFor(wordId: number, epoch = getSessionEpoch()) {
+    // The queue can outlive a screen. Read its latest intent over the current query, never a mount-time copy.
+    const snapshot = client.getQueryData<StudyBatch>(studyQueryKey) || initialStudy
+    return readFavoriteIntent(client, userId, wordId, epoch, snapshot.words.find(word => word.id === wordId)?.favorite || false)
+  }
+
   async function toggleFavorite(wordId: number) {
     // The same word can reappear in correction practice while its first request is pending.
     if (favoriteRequests.current.has(wordId)) return
     const epoch = getSessionEpoch()
-    const favorite = !readFavoriteIntent(client, userId, wordId, epoch, favoriteIds.has(wordId))
+    const favorite = !favoriteFor(wordId, epoch)
     const isCurrent = () => getSessionEpoch() === epoch && client.getQueryData<User>(['me'])?.id === userId
     const mutation = enqueueFavoriteMutation({
       scope: client, userId, wordId, epoch, favorite,
@@ -277,7 +283,6 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
       // A newly mounted screen may have been awaiting its first snapshot when the old read was cancelled.
       void client.refetchQueries({ type: 'active', predicate: query => ['study', 'books', 'favorites'].includes(String(query.queryKey[0])) && query.state.data === undefined })
       for (const queryKey of ['favorites', 'books', 'stats']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
-      if (mounted.current) setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
     } finally {
       mutation.release()
       favoriteRequests.current.delete(wordId)
@@ -368,7 +373,7 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
       </> : <>
         <div className="quiz-feedback" data-correct={feedback.correct}>
           <div className="quiz-feedback-title" role="status" aria-live="polite">{feedback.correct ? <Check /> : <ArrowRotateLeft />}<strong>{feedback.correct ? learnQuestion ? learnQuestion.learnStage === 0 ? '词义认对了' : '英文也记住了' : question.correction ? '这次记住了' : '回答正确' : learnQuestion ? '从第一步，再记一次' : '再看一遍，加深印象'}</strong><span>{question.direction === 'en-zh' ? '英译中' : '中译英'}</span></div>
-          <div className="quiz-feedback-heading"><h1 lang="en">{question.word.text}</h1><FavoriteWord favorite={favoriteIds.has(question.word.id)} pending={pendingFavoriteIds.has(question.word.id)} onPress={() => { void toggleFavorite(question.word.id) }} /></div>
+          <div className="quiz-feedback-heading"><h1 lang="en">{question.word.text}</h1><FavoriteWord favorite={favoriteFor(question.word.id)} pending={pendingFavoriteIds.has(question.word.id)} onPress={() => { void toggleFavorite(question.word.id) }} /></div>
           <div className="quiz-feedback-audio"><span lang="en">{question.word.phonetic}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(question.word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div>
           <p className="quiz-feedback-meaning">{question.word.meaning}</p>
           {!feedback.correct && (selectedOption || feedback.spelling) && <p className="quiz-your-answer"><span>你的答案</span>{selectedOption?.label || feedback.spelling}</p>}
