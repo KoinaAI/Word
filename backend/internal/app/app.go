@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -535,7 +536,7 @@ func (a *App) spa(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(clean, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
-		http.ServeFile(w, r, target)
+		a.serveStatic(w, r, target)
 		return
 	}
 	if filepath.Ext(clean) != "" {
@@ -543,5 +544,55 @@ func (a *App) spa(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	http.ServeFile(w, r, filepath.Join(a.cfg.WebDir, "index.html"))
+	a.serveStatic(w, r, filepath.Join(a.cfg.WebDir, "index.html"))
+}
+
+// serveStatic negotiates build-time gzip variants. Serving the selected bytes
+// through ServeContent keeps HEAD, conditional requests and byte ranges correct.
+func (a *App) serveStatic(w http.ResponseWriter, r *http.Request, path string) {
+	w.Header().Add("Vary", "Accept-Encoding")
+	if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+		compressed, err := os.Open(path + ".gz")
+		if err == nil {
+			defer compressed.Close()
+			info, statErr := compressed.Stat()
+			if statErr == nil && !info.IsDir() {
+				if typ := mime.TypeByExtension(filepath.Ext(path)); typ != "" {
+					w.Header().Set("Content-Type", typ)
+				}
+				w.Header().Set("Content-Encoding", "gzip")
+				http.ServeContent(w, r, filepath.Base(path), info.ModTime(), compressed)
+				return
+			}
+		}
+	}
+	http.ServeFile(w, r, path)
+}
+
+func acceptsGzip(value string) bool {
+	wildcard := false
+	for _, item := range strings.Split(value, ",") {
+		parts := strings.Split(item, ";")
+		encoding := strings.TrimSpace(strings.ToLower(parts[0]))
+		if encoding != "gzip" && encoding != "*" {
+			continue
+		}
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			key, raw, found := strings.Cut(strings.TrimSpace(parameter), "=")
+			if found && strings.EqualFold(key, "q") {
+				parsed, err := strconv.ParseFloat(raw, 64)
+				if err != nil || parsed < 0 || parsed > 1 {
+					quality = 0
+				} else {
+					quality = parsed
+				}
+			}
+		}
+		if encoding == "gzip" {
+			return quality > 0
+		}
+		wildcard = quality > 0
+	}
+	return wildcard
 }
