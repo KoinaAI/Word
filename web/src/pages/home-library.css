@@ -219,3 +219,27 @@
   .library-page .word-list .list-view__item { gap: 8px; }
   .library-page .word-list .list-view__description { font-size: 13px; }
 }
+
+/* Paged content keeps each view small without shrinking reading or touch targets. */
+.library-page .list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 20px; font-size: 13px; }
+.library-page .list-pagination [data-slot="pagination-previous"], .library-page .list-pagination [data-slot="pagination-next"] { min-height: 44px; font-size: 14px; }
+.library-page .list-pagination .pagination__summary { color: var(--muted); font-variant-numeric: tabular-nums; }
+.library-page :is(#book-content-title, [aria-label="收藏搜索结果"]):focus { outline: none; scroll-margin-top: 90px; }
+.library-page .mode-book p { font-size: 14px; line-height: 1.75; }
+.library-page .mode-book .button { font-size: 14px; min-height: 44px; padding-inline: 14px; }
+.library-page .mode-book { gap: 20px; padding: 24px; }
+.library-mode-note { color: var(--muted); font-size: 13px; line-height: 1.85; max-width: 760px; }
+.statistics-page .metric-card .kpi__footer { font-size: 12px; line-height: 1.7; }
+.statistics-page .recent-row { gap: 16px; }
+
+@media (max-width: 600px) {
+  .library-page .mode-book { padding: 20px; gap: 16px; align-items: flex-start; }
+  .library-page .mode-book .wordbook-cover.book-cover-small { width: 62px; height: 92px; padding: 12px 10px; }
+  .library-page .mode-book .wordbook-cover.book-cover-small .book-cover-top { display: none; }
+  .library-page .mode-book .wordbook-cover.book-cover-small .book-cover-type { font-size: 22px; margin: auto 0; }
+  .library-page .mode-book h3 { font-size: 16px; line-height: 1.5; }
+  .library-page .mode-book p { font-size: 13px; }
+  .library-page .list-pagination { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .library-page .list-pagination .pagination__content { width: 100%; justify-content: space-between; }
+  .statistics-page .recent-row { flex-wrap: wrap; }
+}
