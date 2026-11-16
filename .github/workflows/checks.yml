@@ -10,6 +10,9 @@ on:
 
 permissions:
   contents: read
+  checks: read
+  statuses: read
+  actions: read
 
 concurrency:
   group: checks-${{ github.event.pull_request.number || github.ref }}
@@ -63,8 +66,10 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.22.3"
+      - name: Check scoped CI evidence rules
+        run: python3 -m unittest discover -s scripts -p test_check_results.py
       - name: Check question generation and learning stages
-        run: node --test web/tests/study-quiz.test.ts web/tests/learn-round.test.ts
+        run: node --test web/tests/*.test.ts
 
   frontend:
     needs: changes
@@ -135,7 +140,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
-      - name: Report checked and unavailable components
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require every affected component or trusted build evidence
         env:
           CHANGES: ${{ needs.changes.result }}
           QUIZ_SELECTED: ${{ needs.changes.outputs.frontend }}
@@ -147,31 +155,8 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
           CONTAINER_RESULT: ${{ needs.container.result }}
-        run: |
-          python3 - <<'PY'
-          import os
-          if os.environ['CHANGES'] != 'success':
-              raise SystemExit('Change selection did not succeed')
-          missing = []
-          failed = []
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('| Component | Result |\n|---|---|\n')
-              for name in ('quiz', 'frontend', 'backend', 'container'):
-                  selected = os.environ[name.upper() + '_SELECTED'] == 'true'
-                  result = os.environ[name.upper() + '_RESULT']
-                  expected_skip = not selected or (name in ('frontend', 'container') and os.environ['PRO_AVAILABLE'] != 'true')
-                  if selected and expected_skip:
-                      missing.append(name)
-                      label = 'Not verified: licensed build token unavailable'
-                  elif not selected:
-                      label = 'Not affected'
-                  else:
-                      label = result
-                  summary.write(f'| {name} | {label} |\n')
-                  if (expected_skip and result != 'skipped') or (not expected_skip and result != 'success'):
-                      failed.append(name + ': ' + result)
-          if missing:
-              print('::warning::Not verified in CI: ' + ', '.join(missing) + '. Run a licensed local build before merging; configure HEROUI_AUTH_TOKEN to enable these jobs.')
-          if failed:
-              raise SystemExit('Unexpected check results: ' + ', '.join(failed))
-          PY
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TRUSTED_BUILD_ACTOR: MournInk
+        run: python3 scripts/check_results.py

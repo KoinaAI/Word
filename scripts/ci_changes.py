@@ -28,7 +28,7 @@ else:
 # Treat renames as deletion/addition so moving a file out of a component still
 # checks its former owner, rather than seeing only the destination pathname.
 files = git("diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", base, head).splitlines()
-config = any(path.startswith(".github/") or path == "scripts/ci_changes.py" for path in files)
+config = any(path.startswith(".github/") or path in {"scripts/ci_changes.py", "scripts/check_results.py", "scripts/test_check_results.py"} for path in files)
 checks = {
     "frontend": config or any(path.startswith("web/") for path in files),
     "backend": config or any(path.startswith("backend/") for path in files),
