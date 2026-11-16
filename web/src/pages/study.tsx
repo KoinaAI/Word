@@ -270,6 +270,8 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
         if (mounted.current) toast.error(result.error instanceof Error ? result.error.message : '收藏暂时没有保存成功')
         return
       }
+      await Promise.all(['study', 'books', 'favorites'].map(queryKey => client.cancelQueries({ queryKey: [queryKey] })))
+      if (!mutation.isLatest()) return
       for (const queryKey of ['study', 'books', 'favorites']) client.setQueriesData({ queryKey: [queryKey] }, data => updateFavoriteCache(data, wordId, favorite))
       for (const queryKey of ['favorites', 'books', 'stats']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
       if (mounted.current) setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
