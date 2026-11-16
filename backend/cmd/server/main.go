@@ -20,7 +20,7 @@ func main() {
 	}
 }
 func run() error {
-	a, err := app.New(app.Config{DBPath: os.Getenv("DB_PATH"), WebDir: os.Getenv("WEB_DIR"), AdminEmail: os.Getenv("ADMIN_EMAIL"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), CookieSecure: os.Getenv("COOKIE_SECURE") == "true", DevOrigin: os.Getenv("DEV_ORIGIN")})
+	a, err := app.New(app.Config{DBPath: os.Getenv("DB_PATH"), WebDir: os.Getenv("WEB_DIR"), AdminEmail: os.Getenv("ADMIN_EMAIL"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), CookieSecure: os.Getenv("COOKIE_SECURE") == "true", DevOrigin: os.Getenv("DEV_ORIGIN"), TrustedProxies: os.Getenv("TRUSTED_PROXIES")})
 	if err != nil {
 		return err
 	}

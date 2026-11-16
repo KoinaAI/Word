@@ -182,12 +182,20 @@ func (a *App) updateMe(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	u := *userFrom(r)
+	u := userFrom(r)
+	if u == nil {
+		fail(w, http.StatusUnauthorized, "请先登录或开始访客体验")
+		return
+	}
+	set := []string{}
+	args := []any{}
 	if req.DailyGoal != nil {
 		if *req.DailyGoal < 1 || *req.DailyGoal > 500 {
 			fail(w, 400, "每日目标需为 1–500")
 			return
 		}
+		set = append(set, "daily_goal=?")
+		args = append(args, *req.DailyGoal)
 		u.DailyGoal = *req.DailyGoal
 	}
 	if req.ExamDate != nil {
@@ -198,24 +206,28 @@ func (a *App) updateMe(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		set = append(set, "exam_date=?")
+		args = append(args, *req.ExamDate)
 		u.ExamDate = *req.ExamDate
 	}
 	if req.Name != nil {
-		u.Name = strings.TrimSpace(*req.Name)
-		if u.Name == "" || utf8.RuneCountInString(u.Name) > 40 {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" || utf8.RuneCountInString(name) > 40 {
 			fail(w, 400, "姓名需为 1–40 字")
 			return
 		}
+		set = append(set, "name=?")
+		args = append(args, name)
+		u.Name = name
 	}
 	if req.ActiveBookID != nil {
 		if *req.ActiveBookID < 0 {
 			fail(w, 400, "词书编号无效")
 			return
 		}
-		u.ActiveBookID = *req.ActiveBookID
-		if u.ActiveBookID > 0 {
+		if *req.ActiveBookID > 0 {
 			var exists int
-			e := a.db.QueryRowContext(r.Context(), "SELECT 1 FROM books WHERE id=?", u.ActiveBookID).Scan(&exists)
+			e := a.db.QueryRowContext(r.Context(), "SELECT 1 FROM books WHERE id=?", *req.ActiveBookID).Scan(&exists)
 			if errors.Is(e, sql.ErrNoRows) {
 				fail(w, 404, "词书不存在")
 				return
@@ -225,16 +237,29 @@ func (a *App) updateMe(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		set = append(set, "active_book_id=?")
+		if *req.ActiveBookID == 0 {
+			args = append(args, nil)
+		} else {
+			args = append(args, *req.ActiveBookID)
+		}
+		u.ActiveBookID = *req.ActiveBookID
 	}
-	var book any
-	if u.ActiveBookID > 0 {
-		book = u.ActiveBookID
+	if len(set) == 0 {
+		writeJSON(w, 200, *u)
+		return
 	}
-	if _, e := a.db.ExecContext(r.Context(), "UPDATE users SET name=?,daily_goal=?,exam_date=?,active_book_id=? WHERE id=?", u.Name, u.DailyGoal, u.ExamDate, book, u.ID); e != nil {
+	args = append(args, u.ID)
+	if _, e := a.db.ExecContext(r.Context(), "UPDATE users SET "+strings.Join(set, ",")+" WHERE id=?", args...); e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, u)
+	updated, e := a.getUser(r.Context(), u.ID)
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	writeJSON(w, 200, updated)
 }
 func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, e := strconv.ParseInt(r.PathValue("id"), 10, 64)

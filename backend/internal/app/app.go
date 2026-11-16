@@ -15,9 +15,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,20 +33,22 @@ var assets embed.FS
 
 // Config defines persistence, SPA assets and explicit security settings.
 type Config struct {
-	DBPath        string
-	WebDir        string
-	AdminEmail    string
-	AdminPassword string
-	CookieSecure  bool
-	DevOrigin     string
+	DBPath         string
+	WebDir         string
+	AdminEmail     string
+	AdminPassword  string
+	CookieSecure   bool
+	DevOrigin      string
+	TrustedProxies string
 }
 
 // App owns one SQLite pool and the HTTP handler. Close it after HTTP shutdown.
 type App struct {
-	db      *sql.DB
-	cfg     Config
-	mux     *http.ServeMux
-	limiter authLimiter
+	db             *sql.DB
+	cfg            Config
+	mux            *http.ServeMux
+	limiter        authLimiter
+	trustedProxies []netip.Prefix
 }
 
 type rateEntry struct {
@@ -65,6 +69,9 @@ func New(cfg Config) (*App, error) {
 		cfg.AdminEmail = "admin@word.local"
 	}
 	cfg.AdminEmail = strings.ToLower(strings.TrimSpace(cfg.AdminEmail))
+	if cfg.AdminPassword != "" && !validEmail(cfg.AdminEmail) {
+		return nil, errors.New("ADMIN_EMAIL must be a valid email address")
+	}
 	if cfg.DevOrigin != "" {
 		u, e := url.Parse(cfg.DevOrigin)
 		if e != nil || u.Scheme == "" || u.Host == "" || u.Path != "" {
@@ -91,12 +98,16 @@ func New(cfg Config) (*App, error) {
 		u.RawQuery = q.Encode()
 		dsn = u.String()
 	}
+	trusted, err := parseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	a := &App{db: db, cfg: cfg, mux: http.NewServeMux(), limiter: authLimiter{entries: map[string]rateEntry{}}}
+	a := &App{db: db, cfg: cfg, mux: http.NewServeMux(), limiter: authLimiter{entries: map[string]rateEntry{}}, trustedProxies: trusted}
 	if err = a.initialize(); err != nil {
 		db.Close()
 		return nil, err
@@ -228,7 +239,8 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, If-Match, X-Word-User-ID")
+			w.Header().Set("Access-Control-Expose-Headers", "ETag, Allow, X-Word-User-ID")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(204)
 				return
@@ -246,8 +258,29 @@ func (a *App) Handler() http.Handler {
 				return
 			}
 		}
-		if u := a.currentUser(r); u != nil {
-			r = r.WithContext(context.WithValue(r.Context(), userKey{}, u))
+		// Static resources and the health probe need no user lookup, so a busy
+		// learning transaction cannot hold up cached assets or extra auth reads.
+		if strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/health" {
+			u, expires, lookupErr := a.sessionUser(r)
+			if lookupErr != nil {
+				internal(w, lookupErr)
+				return
+			}
+			if u != nil {
+				if err := a.renewSession(w, r, expires); err != nil {
+					internal(w, err)
+					return
+				}
+				r = r.WithContext(context.WithValue(r.Context(), userKey{}, u))
+			}
+		}
+		if id := strings.TrimSpace(r.Header.Get("X-Word-User-ID")); id != "" && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			expected, parseErr := strconv.ParseInt(id, 10, 64)
+			actual := currentID(r)
+			if parseErr != nil || actual == 0 || expected != actual {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "账号已变更，请重新载入页面", "code": "SESSION_CHANGED"})
+				return
+			}
 		}
 		defer func() {
 			if p := recover(); p != nil {
@@ -277,17 +310,56 @@ func (a *App) auth(next http.HandlerFunc, admin bool) http.HandlerFunc {
 	}
 }
 func (a *App) currentUser(r *http.Request) *User {
+	u, _, _ := a.sessionUser(r)
+	return u
+}
+
+func (a *App) sessionUser(r *http.Request) (*User, string, error) {
 	c, e := r.Cookie("word_session")
 	if e != nil || len(c.Value) != 64 {
-		return nil
+		return nil, "", nil
 	}
 	u := User{}
-	e = a.db.QueryRowContext(r.Context(), `SELECT u.id,u.name,COALESCE(u.email,''),u.role,u.guest,u.daily_goal,u.exam_date,COALESCE(u.active_book_id,0) FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?`, tokenHash(c.Value), stamp(time.Now())).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Guest, &u.DailyGoal, &u.ExamDate, &u.ActiveBookID)
+	var expires string
+	e = a.db.QueryRowContext(r.Context(), `SELECT u.id,u.name,COALESCE(u.email,''),u.role,u.guest,u.daily_goal,u.exam_date,COALESCE(u.active_book_id,0),s.expires_at FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?`, tokenHash(c.Value), stamp(time.Now())).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Guest, &u.DailyGoal, &u.ExamDate, &u.ActiveBookID, &expires)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil, "", nil
+	}
 	if e != nil {
+		return nil, "", e
+	}
+	return &u, expires, nil
+}
+
+// renewSession gives active visitors a recoverable identity without writing on
+// every read. The original token remains valid; only its expiry is extended.
+func (a *App) renewSession(w http.ResponseWriter, r *http.Request, expires string) error {
+	now := time.Now()
+	if expires > stamp(now.Add(7*24*time.Hour)) {
 		return nil
 	}
-	return &u
+	cookie, err := r.Cookie("word_session")
+	if err != nil {
+		return err
+	}
+	result, err := a.db.ExecContext(r.Context(), "UPDATE sessions SET expires_at=? WHERE token_hash=? AND expires_at=?", stamp(now.Add(30*24*time.Hour)), tokenHash(cookie.Value), expires)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 1 {
+		a.setSessionCookie(w, cookie.Value)
+	}
+	return nil
 }
+
+func (a *App) setSessionCookie(w http.ResponseWriter, raw string) {
+	http.SetCookie(w, &http.Cookie{Name: "word_session", Value: raw, Path: "/", HttpOnly: true, Secure: a.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+}
+
 func (a *App) getUser(ctx context.Context, id int64) (User, error) {
 	u := User{}
 	err := a.db.QueryRowContext(ctx, "SELECT id,name,COALESCE(email,''),role,guest,daily_goal,exam_date,COALESCE(active_book_id,0) FROM users WHERE id=?", id).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Guest, &u.DailyGoal, &u.ExamDate, &u.ActiveBookID)
@@ -319,7 +391,7 @@ func (a *App) issueSession(w http.ResponseWriter, r *http.Request, id int64) err
 	if e = tx.Commit(); e != nil {
 		return e
 	}
-	http.SetCookie(w, &http.Cookie{Name: "word_session", Value: raw, Path: "/", HttpOnly: true, Secure: a.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+	a.setSessionCookie(w, raw)
 	return nil
 }
 func tokenHash(raw string) string {
@@ -359,11 +431,66 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	return true
 }
-func (a *App) limitAuth(w http.ResponseWriter, r *http.Request) bool {
-	host, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e != nil {
+func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for _, value := range strings.Split(raw, ",") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			addr, addrErr := netip.ParseAddr(value)
+			if addrErr != nil {
+				return nil, fmt.Errorf("invalid TRUSTED_PROXIES address %q", value)
+			}
+			prefix = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	return prefixes, nil
+}
+
+func (a *App) trustedProxy(addr netip.Addr) bool {
+	for _, prefix := range a.trustedProxies {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientAddress strips only explicitly trusted hops, working from the direct
+// peer backwards. A caller outside that boundary cannot select its own bucket.
+func (a *App) clientAddress(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
 		host = r.RemoteAddr
 	}
+	peer, err := netip.ParseAddr(host)
+	if err != nil {
+		return host
+	}
+	peer = peer.Unmap()
+	if !a.trustedProxy(peer) {
+		return peer.String()
+	}
+	chain := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for index := len(chain) - 1; index >= 0; index-- {
+		if !a.trustedProxy(peer) {
+			break
+		}
+		next, parseErr := netip.ParseAddr(strings.TrimSpace(chain[index]))
+		if parseErr != nil {
+			return host
+		}
+		peer = next.Unmap()
+	}
+	return peer.String()
+}
+
+func (a *App) limitAuth(w http.ResponseWriter, r *http.Request) bool {
+	host := a.clientAddress(r)
 	now := time.Now()
 	a.limiter.mu.Lock()
 	defer a.limiter.mu.Unlock()
