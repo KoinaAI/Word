@@ -26,7 +26,7 @@ function SettingsForm({ user }: { user: User }) {
   useEffect(() => {
     const latest = { name: user.name, goal: String(user.dailyGoal), exam: user.examDate?.slice(0, 10) || '' }
     if (!draft.dirty && JSON.stringify(latest) !== JSON.stringify(draft.baseline)) draft.reset(latest)
-  }, [user.name, user.dailyGoal, user.examDate, draft.dirty])
+  }, [user.name, user.dailyGoal, user.examDate])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [autoAudio, setAutoAudio] = useState(localStorage.getItem('word-auto-audio') === 'true')
@@ -38,18 +38,19 @@ function SettingsForm({ user }: { user: User }) {
   const save = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (pending || nameError || goalError) return
+    const submission = draft.beginSubmission()
     setPending(true); setError('')
     try {
       const changed = {
-        ...(name.trim() !== draft.baseline.name ? { name: name.trim() } : {}),
-        ...(goalNumber !== Number(draft.baseline.goal) ? { dailyGoal: goalNumber } : {}),
-        ...(exam !== draft.baseline.exam ? { examDate: exam } : {}),
+        ...(name.trim() !== submission.snapshot.baseline.name ? { name: name.trim() } : {}),
+        ...(goalNumber !== Number(submission.snapshot.baseline.goal) ? { dailyGoal: goalNumber } : {}),
+        ...(exam !== submission.snapshot.baseline.exam ? { examDate: exam } : {}),
       }
       const result = await api<User>('/me', json('PATCH', changed))
-      client.setQueryData(['me'], result)
-      draft.reset({ name: result.name, goal: String(result.dailyGoal), exam: result.examDate?.slice(0, 10) || '' })
-      toast.success('学习计划已保存')
-    } catch (e) { setError((e as Error).message) } finally { setPending(false) }
+      draft.completeSubmission(submission, { name: result.name, goal: String(result.dailyGoal), exam: result.examDate?.slice(0, 10) || '' })
+      if (draft.isCurrentSubmission(submission)) { client.setQueryData(['me'], result); toast.success('学习计划已保存') }
+    } catch (e) { if (draft.isCurrentSubmission(submission)) setError((e as Error).message) }
+    finally { if (draft.isCurrentSubmission(submission)) setPending(false); draft.finishSubmission(submission) }
   }
   return <div className="page-stack settings-page"><PageHeading eyebrow="按照自己的节奏" title="让学习，更适合你" description="小一点的目标，坚持久一点。找到你舒服的学习方式。" /><form onSubmit={save}><Card><Card.Header><Card.Title>学习计划</Card.Title><Card.Description>每次按自己的精力，学一组新词。</Card.Description></Card.Header><Card.Content className="space-y-7">
     {draft.restored && <p className="text-sm text-muted" role="status">已恢复当前标签页中的未保存草稿。</p>}{draft.storageError && <p role="alert" className="text-sm text-danger">{draft.storageError}</p>}

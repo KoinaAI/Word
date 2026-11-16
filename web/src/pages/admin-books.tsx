@@ -25,11 +25,15 @@ function BookEditor({ book, onClose, onSaved }: { book?: Book; onClose: () => vo
   const draft = useFormDraft(`word-draft:${user?.id}:${book ? `book:${book.id}` : 'new-book'}`, initial)
   const form = draft.value
   const mutation = useMutation({
-    mutationFn: () => api<Book>(book ? `/admin/books/${book.id}` : '/admin/books', json(book ? 'PATCH' : 'POST', form)),
-    onSuccess: result => { draft.reset({ title: result.title, subtitle: result.subtitle, description: result.description, category: result.category, color: result.color }); onSaved(result) },
+    mutationFn: (submission: ReturnType<typeof draft.beginSubmission>) => api<Book>(book ? `/admin/books/${book.id}` : '/admin/books', json(book ? 'PATCH' : 'POST', submission.snapshot.value)),
+    onSuccess: (result, submission) => {
+      draft.completeSubmission(submission, { title: result.title, subtitle: result.subtitle, description: result.description, category: result.category, color: result.color })
+      if (draft.isCurrentSubmission(submission)) onSaved(result)
+    },
+    onSettled: (_result, _error, submission) => draft.finishSubmission(submission),
   })
   const set = (name: keyof BookForm, value: string) => draft.setValue(current => ({ ...current, [name]: value }))
-  const submit = (event: FormEvent) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate() }
+  const submit = (event: FormEvent) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(draft.beginSubmission()) }
   return <AdminDialog open title={book ? '编辑词书' : '创建词书'} onClose={() => { if (draft.persist()) onClose() }} busy={mutation.isPending} dirty={draft.dirty} draftError={draft.storageError} onDiscard={() => { draft.reset(initial); onClose() }} footer={<><Button variant="secondary" isDisabled={mutation.isPending} onPress={() => { if (draft.persist()) onClose() }}>关闭并保留草稿</Button><Button type="submit" form="book-editor" isPending={mutation.isPending} isDisabled={!draft.dirty || !form.title.trim()}>{book ? '保存修改' : '创建词书'}</Button></>}>
     <form id="book-editor" onSubmit={submit} className="space-y-4">
       {draft.restored && <p className="text-sm text-muted" role="status">已恢复未保存的词书草稿。</p>}{draft.storageError && <p role="alert" className="text-sm text-danger">{draft.storageError}</p>}
@@ -75,11 +79,18 @@ function ImportDialog({ book, onClose, onImported }: { book: Book; onClose: () =
   const [error, setError] = useState('')
   const [readingFile, setReadingFile] = useState(false)
   const file = useRef<HTMLInputElement>(null)
-  const mutation = useMutation({ mutationFn: (words: ImportWord[]) => api<{ imported: number }>(`/admin/books/${book.id}/words`, json('POST', { words })), onSuccess: result => { draft.reset(''); toast.success(`已导入 ${result.imported} 个单词`); onImported() } })
+  const mutation = useMutation({
+    mutationFn: ({ words }: { words: ImportWord[]; submission: ReturnType<typeof draft.beginSubmission> }) => api<{ imported: number }>(`/admin/books/${book.id}/words`, json('POST', { words })),
+    onSuccess: (result, { submission }) => {
+      draft.completeSubmission(submission, '')
+      if (draft.isCurrentSubmission(submission)) { toast.success(`已导入 ${result.imported} 个单词`); onImported() }
+    },
+    onSettled: (_result, _error, { submission }) => draft.finishSubmission(submission),
+  })
   const importWords = () => {
     if (readingFile || mutation.isPending) return
     setError('')
-    try { mutation.mutate(validateImportWords(source)) }
+    try { mutation.mutate({ words: validateImportWords(source), submission: draft.beginSubmission() }) }
     catch (caught) { setError(caught instanceof Error ? caught.message : '导入内容无效。') }
   }
   const fillExample = () => {

@@ -22,17 +22,18 @@ function NavigationEditor({ initial }: { initial: NavigationState }) {
   const items = draft.value.items
   const [reloading, setReloading] = useState(false)
   const [reloadError, setReloadError] = useState('')
-  const normalized = items.map((item, index) => ({ ...item, sortOrder: index }))
   const remoteChanged = initial.version > draft.value.version
   const mutation = useMutation({
-    mutationFn: () => api<NavigationState>('/admin/navigation', json('PUT', { items: normalized, version: draft.value.version })),
-    onSuccess: data => {
-      draft.reset(data)
+    mutationFn: (submission: ReturnType<typeof draft.beginSubmission>) => api<NavigationState>('/admin/navigation', json('PUT', { items: submission.snapshot.value.items.map((item, index) => ({ ...item, sortOrder: index })), version: submission.snapshot.value.version })),
+    onSuccess: (data, submission) => {
+      draft.completeSubmission(submission, data)
+      if (!draft.isCurrentSubmission(submission)) return
       client.setQueryData(['admin', 'navigation'], data.items)
       client.setQueryData(['admin', 'navigation', 'versioned'], data)
       void client.invalidateQueries({ queryKey: ['admin', 'navigation'] })
       toast.success('导航已更新，侧栏与路由立即生效')
     },
+    onSettled: (_result, _error, submission) => draft.finishSubmission(submission),
   })
   useEffect(() => {
     if (!draft.dirty && initial.version > draft.value.version) draft.reset(initial)
@@ -45,18 +46,21 @@ function NavigationEditor({ initial }: { initial: NavigationState }) {
     return { ...current, items: reordered }
   })
   const reload = async () => {
+    const submission = draft.beginSubmission()
     setReloading(true); setReloadError('')
     try {
       const latest = await api<NavigationState>('/admin/navigation?versioned=1')
-      draft.reset(latest)
+      draft.completeSubmission(submission, latest)
+      if (!draft.isCurrentSubmission(submission)) return
       client.setQueryData(['admin', 'navigation', 'versioned'], latest)
       client.setQueryData(['admin', 'navigation'], latest.items)
       mutation.reset()
-    } catch (error) { setReloadError((error as Error).message) } finally { setReloading(false) }
+    } catch (error) { if (draft.isCurrentSubmission(submission)) setReloadError((error as Error).message) }
+    finally { if (draft.isCurrentSubmission(submission)) setReloading(false); draft.finishSubmission(submission) }
   }
   const conflict = remoteChanged || mutation.error instanceof ApiError && mutation.error.status === 409
   return <div className="space-y-6">
-    <PageHeading eyebrow="站点设置" title="导航配置" description="调整后台入口，保存后立即更新导航与可访问页面。" action={<Button isPending={mutation.isPending} isDisabled={!draft.dirty || conflict || items.some(item => !item.label.trim())} onPress={() => mutation.mutate()}>保存配置</Button>} />
+    <PageHeading eyebrow="站点设置" title="导航配置" description="调整后台入口，保存后立即更新导航与可访问页面。" action={<Button isPending={mutation.isPending} isDisabled={!draft.dirty || conflict || items.some(item => !item.label.trim())} onPress={() => mutation.mutate(draft.beginSubmission())}>保存配置</Button>} />
     {draft.restored && <p role="status" className="text-sm text-muted">已恢复未保存配置。离开页面会保留草稿，保存前将检查是否有其他管理员更新。</p>}{draft.storageError && <p role="alert" className="text-sm text-danger">{draft.storageError}</p>}
     {conflict && <Card variant="secondary" className="p-4"><Card.Header><Card.Title>配置已被更新</Card.Title><Card.Description>当前草稿仍保留。请先复制需要保留的内容，再载入最新配置；系统不会覆盖其他管理员的修改。</Card.Description></Card.Header><Card.Footer><Button variant="secondary" isPending={reloading} onPress={() => { void reload() }}>放弃草稿并载入最新配置</Button></Card.Footer></Card>}
     <div className="space-y-4">
