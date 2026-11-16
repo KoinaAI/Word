@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from './types'
+import { withSessionCookieLock } from './session-lock'
 
 export class ApiError extends Error {
   readonly status: number
@@ -88,17 +89,17 @@ export async function apiResponse<T>(path: string, options: ApiOptions = {}): Pr
   const timeout = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
   requests.add(controller)
   try {
-    const load = async () => {
-      if (path === '/me' && typeof navigator !== 'undefined' && navigator.locks) headers.set('X-Word-Session-Renew', '1')
-      const response = await fetch(`/api${path}`, { ...init, credentials: 'same-origin', headers, signal: controller.signal })
+    const load = async (locked = false, signal = controller.signal) => {
+      if (path === '/me' && locked) headers.set('X-Word-Session-Renew', '1')
+      const response = await fetch(`/api${path}`, { ...init, credentials: 'same-origin', headers, signal })
       const raw: unknown = await response.json().catch(() => ({ error: '服务返回了无效响应，请稍后再试。' }))
       const payload = raw && typeof raw === 'object' ? raw as Record<string, unknown> : { error: '服务返回了无效响应，请稍后再试。' }
       return { response, payload }
     }
     // Cookie-setting requests share one cross-tab lock so a late renewal cannot undo a login.
     const cookieRequest = path === '/me' || path.startsWith('/auth/')
-    const { response, payload } = cookieRequest && typeof navigator !== 'undefined' && navigator.locks
-      ? await navigator.locks.request('word-session-cookie', { signal: controller.signal }, load)
+    const { response, payload } = cookieRequest
+      ? await withSessionCookieLock(controller.signal, load)
       : await load()
     if (epoch !== sessionSnapshot.epoch) throw changedAccount()
     if (!response.ok) {
