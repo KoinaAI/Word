@@ -21,17 +21,22 @@ const modeLabels: Record<Mode, string> = { learn: '日常学习', review: '记�
 type Submission = { wordId: number; mode: Mode; answer: Answer; eventId: string; contentVersion?: number; learnStage?: 0 | 1; learnRevision?: number }
 type Transaction = { payload: Submission; phase: 'sending' | 'failed' | 'settled' }
 type StudyBatch = Study & { hasMore?: boolean; nextAfter?: number; vocabulary?: Word[] }
-type PendingAnswer = { payload: Submission; savedAt: number }
+type PendingAnswer = { kind: 'answer'; payload: Submission; savedAt: number } | { kind: 'undo'; eventId: string; savedAt: number }
 
 function readPendingAnswer(key: string): PendingAnswer | null {
   try {
     const value = JSON.parse(sessionStorage.getItem(key) || 'null') as PendingAnswer | null
-    return value && typeof value.payload?.eventId === 'string' && Number.isSafeInteger(value.payload.wordId) ? value : null
+    if (value?.kind === 'undo') return typeof value.eventId === 'string' ? value : null
+    return value?.kind === 'answer' && typeof value.payload?.eventId === 'string' && Number.isSafeInteger(value.payload.wordId) ? value : null
   } catch { return null }
 }
 
 function rememberAnswer(key: string, payload: Submission) {
-  try { sessionStorage.setItem(key, JSON.stringify({ payload, savedAt: Date.now() })) } catch { /* The in-memory transaction still supports retry when storage is unavailable. */ }
+  try { sessionStorage.setItem(key, JSON.stringify({ kind: 'answer', payload, savedAt: Date.now() })) } catch { /* The in-memory transaction still supports retry when storage is unavailable. */ }
+}
+
+function rememberUndo(key: string, eventId: string) {
+  try { sessionStorage.setItem(key, JSON.stringify({ kind: 'undo', eventId, savedAt: Date.now() })) } catch { /* An in-memory unknown result still locks subsequent judgments. */ }
 }
 
 function forgetAnswer(key: string) {
@@ -99,13 +104,13 @@ function StudyLoader({ bookId, mode, userId }: { bookId: number; mode: Mode; use
     recoveryRequest.current = controller
     setConfirming(true); setRecoveryError(null)
     try {
-      await api('/study/answer', { ...json('POST', pending.payload), signal: controller.signal })
+      await api(pending.kind === 'undo' ? '/study/answer/undo' : '/study/answer', { ...json('POST', pending.kind === 'undo' ? { eventId: pending.eventId } : pending.payload), signal: controller.signal })
       for (const queryKey of ['study', 'books', 'stats', 'admin']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
       resume()
     } catch (error) { if (!controller.signal.aborted) setRecoveryError(error instanceof Error ? error : new Error('暂时无法确认，请重试。')) }
     finally { if (!controller.signal.aborted) setConfirming(false) }
   }
-  if (pending) return <div className="study-recovery"><Card><Card.Header><Card.Title>上次的选择尚未确认</Card.Title><Card.Description>退出或网络中断时，服务器可能已经保存。先确认同一次选择，再按当前进度继续。</Card.Description></Card.Header><Card.Content>{recoveryError && <p role="alert" className="text-danger">{recoveryError.message}</p>}</Card.Content><Card.Footer className="flex-wrap gap-3"><Button isPending={confirming} onPress={() => { void confirmPending() }}>确认上次选择</Button>{recoveryError instanceof ApiError && [400, 404, 409, 422].includes(recoveryError.status) && <Button variant="secondary" onPress={resume}>按当前进度继续</Button>}<Button variant="outline" onPress={exit}>返回词书</Button></Card.Footer></Card></div>
+  if (pending) return <div className="study-recovery"><Card><Card.Header><Card.Title>{pending.kind === 'undo' ? '上次的撤销尚未确认' : '上次的选择尚未确认'}</Card.Title><Card.Description>退出或网络中断时，服务器可能已经保存。先确认同一次操作，再按当前进度继续。</Card.Description></Card.Header><Card.Content>{recoveryError && <p role="alert" className="text-danger">{recoveryError.message}</p>}</Card.Content><Card.Footer className="flex-wrap gap-3"><Button isPending={confirming} onPress={() => { void confirmPending() }}>确认上次操作</Button>{recoveryError instanceof ApiError && [400, 404, 409, 422].includes(recoveryError.status) && <Button variant="secondary" onPress={resume}>按当前进度继续</Button>}<Button variant="outline" onPress={exit}>返回词书</Button></Card.Footer></Card></div>
   const loading = study.isPending
   const error = study.error
   if (loading || error || !study.data) {
@@ -251,9 +256,9 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, mode, exit, reload,
     setPendingFavoriteIds(new Set(favoriteRequests.current))
     try {
       await api(`/favorites/${wordId}`, json('POST', { favorite }))
+      if (!mounted.current) return
       for (const queryKey of ['study', 'books', 'favorites']) client.setQueriesData({ queryKey: [queryKey] }, data => updateFavoriteCache(data, wordId, favorite))
       for (const queryKey of ['favorites', 'books', 'stats']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
-      if (!mounted.current) return
       setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
     } catch (error) {
       if (mounted.current) toast.error(error instanceof Error ? error.message : '收藏暂时没有保存成功')
@@ -390,6 +395,7 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   const [failure, setFailure] = useState<Error | null>(null)
   const [reinforcedIds, setReinforcedIds] = useState(() => new Set<number>())
   const [undoing, setUndoing] = useState(false)
+  const [undoUnconfirmed, setUndoUnconfirmed] = useState(false)
   const [undoError, setUndoError] = useState<string | null>(null)
   const [undoAvailable, setUndoAvailable] = useState(false)
   const [lastConfirmed, setLastConfirmed] = useState<{ payload: Submission; confirmedAt: number } | null>(null)
@@ -441,7 +447,7 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   }
 
   function revealMeaning() {
-    if (!word || transaction.current || undoing || revealedRef.current) return
+    if (!word || transaction.current || undoing || undoUnconfirmed || revealedRef.current) return
     revealedRef.current = true
     setRevealed(true)
   }
@@ -478,30 +484,40 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   }
 
   function choose(decision: StudyDecision) {
-    if (!word || transaction.current || undoing) return
+    if (!word || transaction.current || undoing || undoUnconfirmed) return
     const answer = studyAnswer(mode, revealedRef.current, decision)
     if (!answer) return
     void send({ wordId: word.id, mode, answer, eventId: createStudyEventId(), contentVersion: (word as Word & { contentVersion?: number }).contentVersion })
   }
 
   async function undoLastAnswer() {
-    if (!lastConfirmed || transaction.current || undoing || !undoAvailable) return
+    if (!lastConfirmed || transaction.current || undoing || (!undoAvailable && !undoUnconfirmed)) return
     const controller = new AbortController()
     answerRequest.current = controller
-    setUndoing(true); setUndoError(null)
+    setUndoing(true); setUndoUnconfirmed(true); setUndoError(null)
+    rememberUndo(pendingKey, lastConfirmed.payload.eventId)
     try {
       await api('/study/answer/undo', { ...json('POST', { eventId: lastConfirmed.payload.eventId }), signal: controller.signal })
+      forgetAnswer(pendingKey)
       for (const queryKey of ['stats', 'books', 'study', 'admin']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
       if (!mounted.current) return
+      transaction.current = { payload: lastConfirmed.payload, phase: 'settled' }
       setRound(current => undoStudyAnswer(current, lastConfirmed.payload.eventId))
       if (lastConfirmed.payload.answer === 'unsure-known') setReinforcedIds(current => { const next = new Set(current); next.delete(lastConfirmed.payload.wordId); return next })
       setLastConfirmed(null); setUndoAvailable(false)
+      setUndoUnconfirmed(false)
       revealedRef.current = false; setRevealed(false)
-      setTransitioning(false)
+      setTransitioning(true)
       window.scrollTo({ top: 0, behavior: 'instant' })
       toast.success('已撤销上一个词的判断，可以重新选择')
     } catch (error) {
-      if (mounted.current) setUndoError(error instanceof Error ? error.message : '暂时无法撤销，请稍后重试。')
+      if (mounted.current) {
+        // A transport failure does not tell us whether the undo committed; confirm it before a new judgment.
+        const rejected = error instanceof ApiError && error.status >= 400 && error.status < 500
+        if (rejected) forgetAnswer(pendingKey)
+        setUndoUnconfirmed(!rejected)
+        setUndoError(error instanceof Error ? error.message : '暂时无法确认撤销结果，请重试。')
+      }
     } finally { if (mounted.current) setUndoing(false) }
   }
 
@@ -512,7 +528,7 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   }
 
   function retryUnknown() {
-    if (transaction.current || undoing || !summary.unknown.length) return
+    if (transaction.current || undoing || undoUnconfirmed || !summary.unknown.length) return
     setLastConfirmed(null); setUndoAvailable(false)
     revealedRef.current = false
     setRevealed(false)
@@ -529,7 +545,7 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
         if (['1', '2', '3', ' ', 'f', 'F', 'Enter'].includes(event.key)) event.preventDefault()
         return
       }
-      if (transaction.current || undoing) return
+      if (transaction.current || undoing || undoUnconfirmed) return
       if (event.key.toLowerCase() === 'f') {
         event.preventDefault()
         pronounce(word.text)
@@ -553,12 +569,12 @@ function SprintSession({ initialStudy, pendingKey, mode, exit, reload, nextBatch
   })
 
   const header = <StudyHeader book={book} mode={mode} exit={exit} saving={saving} completed={round.cursor} total={round.words.length} detail={round.number > 1 ? `第 ${round.number} 轮` : undefined} />
-  const undoControl = <div className="sprint-undo" aria-live="polite">{lastConfirmed && undoAvailable ? <Button variant="ghost" isPending={undoing} isDisabled={saving || transitioning || !!failure} onPress={() => { void undoLastAnswer() }}><ArrowRotateLeft />撤销上一个词的判断</Button> : <span>{round.cursor > 0 ? '最近一次判断可在 2 分钟内撤销' : '按第一印象选择，也可以撤销最近一次判断'}</span>}{undoError && <p role="alert">{undoError}</p>}</div>
+  const undoControl = <div className="sprint-undo" aria-live="polite">{lastConfirmed && (undoAvailable || undoUnconfirmed) ? <Button variant="ghost" isPending={undoing} isDisabled={saving || transitioning || !!failure} onPress={() => { void undoLastAnswer() }}><ArrowRotateLeft />{undoUnconfirmed ? '确认上次撤销结果' : '撤销上一个词的判断'}</Button> : <span>{round.cursor > 0 ? '最近一次判断可在 2 分钟内撤销' : '按第一印象选择，也可以撤销最近一次判断'}</span>}{undoError && <p role="alert">{undoError}{undoUnconfirmed && ' 确认前可退出，重新进入会读取当前进度。'}</p>}</div>
   if (!round.words.length) return <div className="study-page">{header}<main className="study-complete"><Empty title="这一轮，可以轻松收尾了" description="当前没有待速刷单词，模糊的词可以继续巩固。" action={<div className="flex flex-wrap justify-center gap-3"><Button variant="outline" onPress={exit}>返回词书</Button><Button onPress={() => navigate(`/study/${book.id}/reinforce`)}>查看巩固列表<ArrowRight /></Button></div>} /></main></div>
 
-  if (!word) return <div className="study-page">{header}<main className="study-complete"><div className="study-complete-icon"><Check /></div><p className="text-sm text-muted">一点积累，一点进步</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">这一轮，完成了。</h1><p className="mt-4 text-sm leading-6 text-muted">已完成 {round.results.length} 个单词的判断，学习记录已保存。</p><div className="study-summary"><SummaryCount label="直接掌握" value={summary.known} /><SummaryCount label="加入巩固" value={summary.reinforce} /><SummaryCount label="留待再刷" value={summary.unknown.length} /></div><p className="mt-6 max-w-md text-sm leading-6 text-muted">会的已标记掌握，模糊的已加入巩固，不会的继续留在速刷列表。</p>{undoControl}<div className="mt-8 flex flex-wrap justify-center gap-3">{initialStudy.hasMore && <Button isDisabled={undoing} onPress={nextBatch}>继续下一组<ArrowRight /></Button>}{summary.unknown.length > 0 && <Button isDisabled={undoing} onPress={retryUnknown}><ArrowRotateLeft />再刷本组不会的 {summary.unknown.length} 词</Button>}<Button variant={summary.unknown.length ? 'outline' : 'primary'} onPress={() => navigate(`/study/${book.id}/reinforce`)}>去巩固{reinforcedIds.size ? ` ${reinforcedIds.size} 词` : ''}<ArrowRight /></Button><Button variant="outline" onPress={exit}><BookOpen />返回词书</Button></div></main></div>
+  if (!word) return <div className="study-page">{header}<main className="study-complete"><div className="study-complete-icon"><Check /></div><p className="text-sm text-muted">一点积累，一点进步</p><h1 className="mt-3 text-3xl font-semibold tracking-tight">这一轮，完成了。</h1><p className="mt-4 text-sm leading-6 text-muted">已完成 {round.results.length} 个单词的判断，学习记录已保存。</p><div className="study-summary"><SummaryCount label="直接掌握" value={summary.known} /><SummaryCount label="加入巩固" value={summary.reinforce} /><SummaryCount label="留待再刷" value={summary.unknown.length} /></div><p className="mt-6 max-w-md text-sm leading-6 text-muted">会的已标记掌握，模糊的已加入巩固，不会的继续留在速刷列表。</p>{undoControl}<div className="mt-8 flex flex-wrap justify-center gap-3">{initialStudy.hasMore && <Button isDisabled={undoing || undoUnconfirmed} onPress={nextBatch}>继续下一组<ArrowRight /></Button>}{summary.unknown.length > 0 && <Button isDisabled={undoing || undoUnconfirmed} onPress={retryUnknown}><ArrowRotateLeft />再刷本组不会的 {summary.unknown.length} 词</Button>}<Button variant={summary.unknown.length ? 'outline' : 'primary'} onPress={() => navigate(`/study/${book.id}/reinforce`)}>去巩固{reinforcedIds.size ? ` ${reinforcedIds.size} 词` : ''}<ArrowRight /></Button><Button variant="outline" onPress={exit}><BookOpen />返回词书</Button></div></main></div>
 
-  return <div className="study-page">{header}<main className="sprint-main"><motion.section key={`${round.number}:${word.id}`} ref={wordElement} tabIndex={-1} aria-label="当前单词" className="sprint-word-area" initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} onAnimationComplete={() => unlockVisibleWord(word.id)}><h1 className="quiz-word" lang="en" aria-live="polite">{word.text}</h1><div className="study-pronunciation"><span lang="en">{word.phonetic || '音标暂缺'}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div><div ref={definitionElement} className="sprint-definition" tabIndex={revealed ? 0 : -1} role="region" aria-label="单词释义">{revealed && <p aria-live="polite">{word.meaning}</p>}</div></motion.section><div className="sprint-controls"><p className="sprint-instruction">{revealed ? '看过释义后选择“会”，会加入巩固列表。' : '凭第一印象，判断你是否认识这个词。'}</p>{failure ? <Card className="quiz-save-error" role="alert"><Card.Header><Card.Title>{terminalFailure ? '学习队列发生了变化' : '这次选择还没有确认'}</Card.Title><Card.Description>{failure.message}{!terminalFailure && ' 重试会提交同一次选择。'}</Card.Description></Card.Header><Card.Footer className="flex-wrap gap-3">{terminalFailure ? <Button onPress={failure instanceof ApiError && failure.status === 401 ? () => navigate('/login') : reload}>{failure instanceof ApiError && failure.status === 401 ? '重新登录' : '刷新学习队列'}</Button> : <Button onPress={retryAnswer} isPending={saving}>重试这次选择</Button>}<Button variant="outline" onPress={exit}>返回词书</Button></Card.Footer></Card> : <div className="sprint-answers" data-revealed={revealed}><Button fullWidth variant="outline" className="study-action" onPress={() => choose('unknown')} isDisabled={saving || transitioning || undoing} aria-keyshortcuts="1">不会<KeyHint value="1" /></Button><Button fullWidth variant="outline" className="study-action sprint-unsure" onPress={revealMeaning} isDisabled={saving || transitioning || undoing || revealed} aria-keyshortcuts="2 Space">{revealed ? '已看释义' : '不确定'}{!revealed && <KeyHint value="2" />}</Button><Button fullWidth className="study-action" onPress={() => choose('known')} isDisabled={saving || transitioning || undoing} aria-keyshortcuts="3">会<KeyHint value="3" /></Button></div>}<div className="study-keyboard-help" role="status" aria-live="polite">{saving ? '正在保存这次选择，可随时退出…' : failure ? '确认结果前，当前单词会保持在这里。' : <span>{revealed ? '1 不会 · 3 会 · F 发音' : '1 不会 · 2 / 空格 不确定 · 3 会 · F 发音'}</span>}</div>{undoControl}</div></main></div>
+  return <div className="study-page">{header}<main className="sprint-main"><motion.section key={`${round.number}:${word.id}`} ref={wordElement} tabIndex={-1} aria-label="当前单词" className="sprint-word-area" initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }} onAnimationComplete={() => unlockVisibleWord(word.id)}><h1 className="quiz-word" lang="en" aria-live="polite">{word.text}</h1><div className="study-pronunciation"><span lang="en">{word.phonetic || '音标暂缺'}</span><IconButton label="播放单词发音（F）" onPress={() => pronounce(word.text)} aria-keyshortcuts="F"><Volume /></IconButton></div><div ref={definitionElement} className="sprint-definition" tabIndex={revealed ? 0 : -1} role="region" aria-label="单词释义">{revealed && <p aria-live="polite">{word.meaning}</p>}</div></motion.section><div className="sprint-controls"><p className="sprint-instruction">{revealed ? '看过释义后选择“会”，会加入巩固列表。' : '凭第一印象，判断你是否认识这个词。'}</p>{failure ? <Card className="quiz-save-error" role="alert"><Card.Header><Card.Title>{terminalFailure ? '学习队列发生了变化' : '这次选择还没有确认'}</Card.Title><Card.Description>{failure.message}{!terminalFailure && ' 重试会提交同一次选择。'}</Card.Description></Card.Header><Card.Footer className="flex-wrap gap-3">{terminalFailure ? <Button onPress={failure instanceof ApiError && failure.status === 401 ? () => navigate('/login') : reload}>{failure instanceof ApiError && failure.status === 401 ? '重新登录' : '刷新学习队列'}</Button> : <Button onPress={retryAnswer} isPending={saving}>重试这次选择</Button>}<Button variant="outline" onPress={exit}>返回词书</Button></Card.Footer></Card> : <div className="sprint-answers" data-revealed={revealed}><Button fullWidth variant="outline" className="study-action" onPress={() => choose('unknown')} isDisabled={saving || transitioning || undoing || undoUnconfirmed} aria-keyshortcuts="1">不会<KeyHint value="1" /></Button><Button fullWidth variant="outline" className="study-action sprint-unsure" onPress={revealMeaning} isDisabled={saving || transitioning || undoing || undoUnconfirmed || revealed} aria-keyshortcuts="2 Space">{revealed ? '已看释义' : '不确定'}{!revealed && <KeyHint value="2" />}</Button><Button fullWidth className="study-action" onPress={() => choose('known')} isDisabled={saving || transitioning || undoing || undoUnconfirmed} aria-keyshortcuts="3">会<KeyHint value="3" /></Button></div>}<div className="study-keyboard-help" role="status" aria-live="polite">{saving ? '正在保存这次选择，可随时退出…' : failure ? '确认结果前，当前单词会保持在这里。' : <span>{revealed ? '1 不会 · 3 会 · F 发音' : '1 不会 · 2 / 空格 不确定 · 3 会 · F 发音'}</span>}</div>{undoControl}</div></main></div>
 }
 
 function KeyHint({ value }: { value: string }) {
