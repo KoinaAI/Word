@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Button, Card, Chip, Input } from '@heroui/react'
 import { DataGrid, type DataGridColumn } from '@heroui-pro/react/data-grid'
 import { NativeSelect } from '@heroui-pro/react/native-select'
@@ -45,32 +45,40 @@ export function AdminOverview() {
 }
 
 export function AdminUsers() {
-  const [search, setSearch] = useState('')
-  const [kind, setKind] = useState('all')
-  const query = useQuery({ queryKey: ['admin', 'users'], queryFn: () => api<AdminUser[]>('/admin/users') })
-  const users = useMemo(() => (query.data || []).filter(user => {
-    const value = search.trim().toLocaleLowerCase()
-    const matchesSearch = `${user.name} ${user.email}`.toLocaleLowerCase().includes(value)
-    return matchesSearch && (kind === 'all' || (kind === 'guest' ? user.guest : kind === 'admin' ? user.role === 'admin' : !user.guest))
-  }), [query.data, search, kind])
+  const pageSize = 50
+  const [filters, setFilters] = useState({ search: '', kind: 'all', offset: 0 })
+  const query = useQuery({
+    queryKey: ['admin', 'users', filters.search.trim(), filters.kind, filters.offset],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ paged: '1', q: filters.search.trim(), kind: filters.kind, offset: String(filters.offset), limit: String(pageSize) })
+      return api<{ items: AdminUser[]; total: number; hasMore: boolean; offset: number; limit: number }>(`/admin/users?${params}`, { signal })
+    },
+    placeholderData: keepPreviousData,
+  })
+  const users = query.data?.items || []
+  const total = query.data?.total || 0
   const columns: DataGridColumn<AdminUser>[] = [
-    { id: 'name', header: '用户', accessorKey: 'name', allowsSorting: true, isRowHeader: true, minWidth: 220, cell: user => <div className="py-1"><div className="font-medium">{user.name}</div><div className="mt-1 text-xs text-muted">{user.email || `访客 #${user.id}`}</div></div> },
+    { id: 'name', header: '用户', accessorKey: 'name', isRowHeader: true, minWidth: 220, cell: user => <div className="py-1"><div className="font-medium">{user.name}</div><div className="mt-1 text-xs text-muted">{user.email || `访客 #${user.id}`}</div></div> },
     { id: 'role', header: '账户类型', minWidth: 130, cell: user => <Chip variant="soft" size="sm" color={user.role === 'admin' ? 'accent' : 'default'}>{user.role === 'admin' ? '管理员' : user.guest ? '访客' : '注册用户'}</Chip> },
-    { id: 'learnedCount', header: '已掌握', accessorKey: 'learnedCount', allowsSorting: true, align: 'end', minWidth: 100, cell: user => <span className="tabular-nums">{count(user.learnedCount)} 词</span> },
-    { id: 'dailyGoal', header: '每日目标', accessorKey: 'dailyGoal', align: 'end', minWidth: 100, cell: user => <span className="tabular-nums text-muted">{user.dailyGoal} 词</span> },
-    { id: 'createdAt', header: '加入时间 · UTC', accessorKey: 'createdAt', allowsSorting: true, minWidth: 160, cell: user => <span className="tabular-nums text-muted">{adminDate(user.createdAt)}</span> },
+    { id: 'learnedCount', header: '已掌握', accessorKey: 'learnedCount', align: 'end', minWidth: 100, cell: user => <span className="tabular-nums">{count(user.learnedCount)} 词</span> },
+    { id: 'dailyGoal', header: '每轮新词', accessorKey: 'dailyGoal', align: 'end', minWidth: 100, cell: user => <span className="tabular-nums text-muted">{user.dailyGoal} 词</span> },
+    { id: 'createdAt', header: '加入时间 · UTC', accessorKey: 'createdAt', minWidth: 160, cell: user => <span className="tabular-nums text-muted">{adminDate(user.createdAt)}</span> },
   ]
-  if (query.isPending) return <Loading label="正在加载用户列表" />
-  if (query.isError) return <Failure error={query.error} retry={query.refetch} />
   return <div className="space-y-6">
-    <PageHeading eyebrow="管理工作台" title="用户管理" description={`${count(query.data.length)} 位学习者，每个人都有自己的节奏。`} />
+    <PageHeading eyebrow="管理工作台" title="用户管理" description="搜索学习者，查看账户类型与学习进度。" />
     <div className="flex flex-wrap items-center gap-3">
-      <Input aria-label="搜索用户" placeholder="搜索昵称或邮箱" className="min-w-48 max-w-sm flex-1" value={search} onChange={event => setSearch(event.target.value)} />
-      <NativeSelect className="w-36"><NativeSelect.Trigger aria-label="账户类型" value={kind} onChange={event => setKind(event.target.value)}>
+      <Input aria-label="搜索用户" placeholder="搜索昵称或邮箱" className="min-w-48 max-w-sm flex-1" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value, offset: 0 }))} />
+      <NativeSelect className="w-36"><NativeSelect.Trigger aria-label="账户类型" value={filters.kind} onChange={event => setFilters(current => ({ ...current, kind: event.target.value, offset: 0 }))}>
         <NativeSelect.Option value="all">全部账户</NativeSelect.Option><NativeSelect.Option value="registered">注册用户</NativeSelect.Option><NativeSelect.Option value="guest">访客</NativeSelect.Option><NativeSelect.Option value="admin">管理员</NativeSelect.Option><NativeSelect.Indicator />
       </NativeSelect.Trigger></NativeSelect>
-      <span className="ml-auto text-sm tabular-nums text-muted">{count(users.length)} 位用户</span>
+      <span className="ml-auto text-sm tabular-nums text-muted" aria-live="polite">{query.isFetching ? '正在更新…' : `共 ${count(total)} 位用户`}</span>
     </div>
-    <DataGrid aria-label="用户列表" data={users} columns={columns} getRowId={user => user.id} selectionMode="none" variant="secondary" contentClassName="min-w-[760px]" scrollContainerClassName="max-h-[65vh] overflow-auto" stickyHeader renderEmptyState={() => <Empty title="没有匹配的用户" description="试试其他昵称、邮箱或账户类型。" />} />
+    {query.isPending ? <Loading label="正在加载用户列表" /> : query.isError ? <Failure error={query.error} retry={query.refetch} /> : <div aria-busy={query.isFetching} className="space-y-4">
+      <DataGrid aria-label="用户列表" data={users} columns={columns} getRowId={user => user.id} selectionMode="none" variant="secondary" contentClassName="min-w-[760px]" scrollContainerClassName="max-h-[65vh] overflow-auto" stickyHeader renderEmptyState={() => <Empty title="没有匹配的用户" description="试试其他昵称、邮箱或账户类型。" />} />
+      <nav aria-label="用户列表分页" className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm tabular-nums text-muted">{total ? `${count(filters.offset + 1)}–${count(filters.offset + users.length)} / ${count(total)} 位用户` : '暂无用户'} · 每页 {pageSize} 位</p>
+        <div className="flex gap-2"><Button variant="secondary" isDisabled={filters.offset === 0 || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: Math.max(0, current.offset - pageSize) }))}>上一页</Button><Button variant="secondary" isDisabled={!query.data?.hasMore || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: current.offset + pageSize }))}>下一页</Button></div>
+      </nav>
+    </div>}
   </div>
 }
