@@ -109,11 +109,7 @@ func New(cfg Config) (*App, error) {
 func (a *App) Close() error { return a.db.Close() }
 
 func (a *App) initialize() error {
-	schema, err := assets.ReadFile("schema.sql")
-	if err != nil {
-		return err
-	}
-	if _, err = a.db.Exec(string(schema)); err != nil {
+	if err := a.migrate(); err != nil {
 		return err
 	}
 	tx, err := a.db.Begin()

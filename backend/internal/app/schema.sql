@@ -16,7 +16,7 @@ CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
 CREATE TABLE IF NOT EXISTS words (
  id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
  text TEXT NOT NULL COLLATE NOCASE, phonetic TEXT NOT NULL DEFAULT '', meaning TEXT NOT NULL,
- example TEXT NOT NULL DEFAULT '', example_meaning TEXT NOT NULL DEFAULT '', UNIQUE(book_id,text)
+ example TEXT NOT NULL DEFAULT '', example_meaning TEXT NOT NULL DEFAULT '', content_version INTEGER NOT NULL DEFAULT 1, UNIQUE(book_id,text)
 );
 CREATE TABLE IF NOT EXISTS progress (
  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 CREATE TABLE IF NOT EXISTS answers (
  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  word_id INTEGER REFERENCES words(id) ON DELETE SET NULL, submitted_word_id INTEGER NOT NULL, word_text TEXT NOT NULL, word_meaning TEXT NOT NULL,
- mode TEXT NOT NULL, answer TEXT NOT NULL, event_id TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(user_id,event_id)
+ mode TEXT NOT NULL, answer TEXT NOT NULL, event_id TEXT NOT NULL, created_at TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0 CHECK(undone IN(0,1)), UNIQUE(user_id,event_id)
 );
 CREATE INDEX IF NOT EXISTS answers_user_time ON answers(user_id,created_at);
 CREATE INDEX IF NOT EXISTS answers_time ON answers(created_at);
@@ -49,4 +49,16 @@ CREATE TABLE IF NOT EXISTS learn_answer_steps (
 );
 CREATE TABLE IF NOT EXISTS navigation (
  id TEXT PRIMARY KEY, label TEXT NOT NULL, path TEXT NOT NULL UNIQUE, icon TEXT NOT NULL, enabled INTEGER NOT NULL, sort_order INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS users_active_book ON users(active_book_id);
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS progress_word ON progress(word_id);
+CREATE INDEX IF NOT EXISTS learn_progress_word ON learn_progress(word_id);
+CREATE INDEX IF NOT EXISTS favorites_word ON favorites(word_id);
+CREATE INDEX IF NOT EXISTS answers_word ON answers(word_id);
+CREATE INDEX IF NOT EXISTS answers_user_id ON answers(user_id,id);
+CREATE TABLE IF NOT EXISTS sprint_undo (
+ answer_id INTEGER PRIMARY KEY REFERENCES answers(id) ON DELETE CASCADE,
+ previous_progress TEXT NOT NULL, previous_stage TEXT NOT NULL, result_revision INTEGER NOT NULL,
+ undone INTEGER NOT NULL DEFAULT 0 CHECK(undone IN(0,1))
 );
