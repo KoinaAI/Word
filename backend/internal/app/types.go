@@ -13,15 +13,20 @@ type User struct {
 }
 
 type Book struct {
-	ID           int64  `json:"id"`
-	Title        string `json:"title"`
-	Subtitle     string `json:"subtitle"`
-	Description  string `json:"description"`
-	Category     string `json:"category"`
-	Color        string `json:"color"`
-	WordCount    int    `json:"wordCount"`
-	LearnedCount int    `json:"learnedCount"`
-	DueCount     int    `json:"dueCount"`
+	ID             int64  `json:"id"`
+	Title          string `json:"title"`
+	Subtitle       string `json:"subtitle"`
+	Description    string `json:"description"`
+	Category       string `json:"category"`
+	Color          string `json:"color"`
+	WordCount      int    `json:"wordCount"`
+	LearnedCount   int    `json:"learnedCount"`
+	DueCount       int    `json:"dueCount"`
+	NewCount       int    `json:"newCount"`
+	LearningCount  int    `json:"learningCount"`
+	ReinforceCount int    `json:"reinforceCount"`
+	SprintCount    int    `json:"sprintCount"`
+	UnstartedCount int    `json:"unstartedCount"`
 }
 
 type Word struct {
@@ -38,6 +43,7 @@ type Word struct {
 	DueAt          string `json:"dueAt,omitempty"`
 	LearnStage     int    `json:"learnStage"`
 	LearnRevision  int64  `json:"learnRevision"`
+	ContentVersion int64  `json:"contentVersion"`
 }
 
 type Navigation struct {

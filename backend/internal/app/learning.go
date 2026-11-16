@@ -11,19 +11,26 @@ import (
 	"time"
 )
 
-const bookColumns = `SELECT b.id,b.title,b.subtitle,b.description,b.category,b.color,COUNT(w.id),COALESCE(SUM(CASE WHEN p.status='mastered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN p.due_at<>'' AND p.due_at<=? THEN 1 ELSE 0 END),0) FROM books b LEFT JOIN words w ON w.book_id=b.id LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? `
-const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0) FROM words w LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
+const bookColumns = `SELECT b.id,b.title,b.subtitle,b.description,b.category,b.color,COUNT(w.id),COALESCE(SUM(CASE WHEN p.status='mastered' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN p.due_at<>'' AND p.due_at<=? THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND COALESCE(p.status,'new')='new' THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN p.status='learning' OR (COALESCE(p.status,'new')='new' AND lp.stage=1) THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN p.reinforce=1 THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND COALESCE(p.status,'new')<>'mastered' AND COALESCE(p.reinforce,0)=0 THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN w.id IS NOT NULL AND COALESCE(p.status,'new')='new' AND COALESCE(lp.stage,0)=0 THEN 1 ELSE 0 END),0)
+FROM books b LEFT JOIN words w ON w.book_id=b.id LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
+const wordJoins = ` FROM words w LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? `
+const wordColumns = `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?),COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version` + wordJoins
 
 type scanner interface{ Scan(...any) error }
 
 func scanBook(s scanner) (Book, error) {
 	b := Book{}
-	e := s.Scan(&b.ID, &b.Title, &b.Subtitle, &b.Description, &b.Category, &b.Color, &b.WordCount, &b.LearnedCount, &b.DueCount)
+	e := s.Scan(&b.ID, &b.Title, &b.Subtitle, &b.Description, &b.Category, &b.Color, &b.WordCount, &b.LearnedCount, &b.DueCount, &b.NewCount, &b.LearningCount, &b.ReinforceCount, &b.SprintCount, &b.UnstartedCount)
 	return b, e
 }
 func scanWord(s scanner) (Word, error) {
 	w := Word{}
-	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt, &w.LearnStage, &w.LearnRevision)
+	e := s.Scan(&w.ID, &w.BookID, &w.Text, &w.Phonetic, &w.Meaning, &w.Example, &w.ExampleMeaning, &w.Favorite, &w.Status, &w.Reinforce, &w.DueAt, &w.LearnStage, &w.LearnRevision, &w.ContentVersion)
 	return w, e
 }
 func currentID(r *http.Request) int64 {
@@ -33,7 +40,7 @@ func currentID(r *http.Request) int64 {
 	return 0
 }
 func (a *App) readBook(ctx context.Context, id, userID int64) (Book, error) {
-	return scanBook(a.db.QueryRowContext(ctx, bookColumns+"WHERE b.id=? GROUP BY b.id", stamp(time.Now()), userID, id))
+	return scanBook(a.db.QueryRowContext(ctx, bookColumns+"WHERE b.id=? GROUP BY b.id", stamp(time.Now()), userID, userID, id))
 }
 func (a *App) readWords(ctx context.Context, userID int64, where string, args ...any) ([]Word, error) {
 	params := []any{userID, userID, userID}
@@ -60,7 +67,7 @@ func (a *App) books(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "搜索条件过长")
 		return
 	}
-	rows, e := a.db.QueryContext(r.Context(), bookColumns+"WHERE (?='' OR b.title LIKE ? OR b.description LIKE ?) AND (?='' OR b.category=?) GROUP BY b.id ORDER BY b.id", stamp(time.Now()), currentID(r), query, "%"+query+"%", "%"+query+"%", category, category)
+	rows, e := a.db.QueryContext(r.Context(), bookColumns+"WHERE (?='' OR b.title LIKE ? OR b.description LIKE ?) AND (?='' OR b.category=?) GROUP BY b.id ORDER BY b.id", stamp(time.Now()), currentID(r), currentID(r), query, "%"+query+"%", "%"+query+"%", category, category)
 	if e != nil {
 		internal(w, e)
 		return
@@ -81,12 +88,73 @@ func (a *App) books(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, books)
 }
+
+// pageBounds rejects malformed and excessive requests instead of silently truncating them.
+func pageBounds(r *http.Request, defaultLimit int) (limit, offset int, ok bool) {
+	limit, offset = defaultLimit, 0
+	var err error
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		offset, err = strconv.Atoi(raw)
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	return limit, offset, limit >= 1 && limit <= 200 && offset >= 0 && offset <= 10000000
+}
+
+func wordFilter(r *http.Request) (string, []any, bool) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 200 {
+		return "", nil, false
+	}
+	where := ""
+	args := []any{}
+	if query != "" {
+		where += " AND (w.text LIKE ? OR w.meaning LIKE ?)"
+		args = append(args, "%"+query+"%", "%"+query+"%")
+	}
+	switch r.URL.Query().Get("status") {
+	case "", "all":
+	case "new":
+		where += " AND COALESCE(p.status,'new')='new' AND COALESCE(lp.stage,0)=0"
+	case "learning":
+		where += " AND (p.status='learning' OR (COALESCE(p.status,'new')='new' AND lp.stage=1))"
+	case "mastered":
+		where += " AND p.status='mastered'"
+	case "reinforce":
+		where += " AND p.reinforce=1"
+	default:
+		return "", nil, false
+	}
+	return where, args, true
+}
+
+func (a *App) countWords(ctx context.Context, userID int64, where string, args ...any) (int, error) {
+	params := append([]any{userID, userID}, args...)
+	var total int
+	err := a.db.QueryRowContext(ctx, "SELECT COUNT(*)"+wordJoins+where, params...).Scan(&total)
+	return total, err
+}
+
 func (a *App) bookDetail(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
-	book, e := a.readBook(r.Context(), id, currentID(r))
+	limit, offset, ok := pageBounds(r, 50)
+	filter, args, valid := wordFilter(r)
+	if !ok || !valid {
+		fail(w, 400, "分页或筛选参数无效")
+		return
+	}
+	userID := currentID(r)
+	book, e := a.readBook(r.Context(), id, userID)
 	if errors.Is(e, sql.ErrNoRows) {
 		fail(w, 404, "词书不存在")
 		return
@@ -95,13 +163,24 @@ func (a *App) bookDetail(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
-	words, e := a.readWords(r.Context(), currentID(r), "WHERE w.book_id=? ORDER BY w.id", id)
+	where := "WHERE w.book_id=?" + filter
+	params := append([]any{id}, args...)
+	total, e := a.countWords(r.Context(), userID, where, params...)
 	if e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"book": book, "words": words})
+	params = append(params, limit, offset)
+	words, e := a.readWords(r.Context(), userID, where+" ORDER BY w.id LIMIT ? OFFSET ?", params...)
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"book": book, "words": words, "total": total, "wordTotal": total, "offset": offset, "limit": limit, "hasMore": offset+len(words) < total})
 }
+
+// study returns a bounded round; non-learning modes use a stable word-ID cursor so
+// unchanged unknown answers do not reappear while continuing the same pass.
 func (a *App) study(w http.ResponseWriter, r *http.Request) {
 	id, e := strconv.ParseInt(r.URL.Query().Get("bookId"), 10, 64)
 	if e != nil || id < 1 {
@@ -111,6 +190,18 @@ func (a *App) study(w http.ResponseWriter, r *http.Request) {
 	mode := r.URL.Query().Get("mode")
 	if !validMode(mode) {
 		fail(w, 400, "学习模式无效")
+		return
+	}
+	limit, _, ok := pageBounds(r, 100)
+	var after int64
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		after, e = strconv.ParseInt(raw, 10, 64)
+		if e != nil || after < 0 {
+			ok = false
+		}
+	}
+	if !ok {
+		fail(w, 400, "分页参数无效")
 		return
 	}
 	u := userFrom(r)
@@ -123,26 +214,81 @@ func (a *App) study(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
-	where := "WHERE w.book_id=? "
+	where := "WHERE w.book_id=?"
 	args := []any{id}
+	order := " ORDER BY w.id"
 	switch mode {
 	case "learn":
-		where += "AND COALESCE(p.status,'new')='new' ORDER BY w.id LIMIT ?"
-		args = append(args, u.DailyGoal)
+		where += " AND COALESCE(p.status,'new')='new'"
+		order = " ORDER BY CASE WHEN lp.stage=1 THEN 0 ELSE 1 END,w.id"
+		limit = min(limit, u.DailyGoal)
 	case "review":
-		where += "AND p.due_at<>'' AND p.due_at<=? ORDER BY p.due_at,w.id"
+		where += " AND p.due_at<>'' AND p.due_at<=?"
 		args = append(args, stamp(time.Now()))
 	case "sprint":
-		where += "AND COALESCE(p.status,'new')<>'mastered' AND COALESCE(p.reinforce,0)=0 ORDER BY w.id"
+		where += " AND COALESCE(p.status,'new')<>'mastered' AND COALESCE(p.reinforce,0)=0"
 	case "reinforce":
-		where += "AND p.reinforce=1 ORDER BY p.updated_at,w.id"
+		where += " AND p.reinforce=1"
 	}
-	words, e := a.readWords(r.Context(), u.ID, where, args...)
+	if mode != "learn" && after > 0 {
+		where += " AND w.id>?"
+		args = append(args, after)
+	}
+	total, e := a.countWords(r.Context(), u.ID, where, args...)
 	if e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"book": book, "words": words, "total": len(words)})
+	words, e := a.readWords(r.Context(), u.ID, where+order+" LIMIT ?", append(args, limit)...)
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	vocabulary := []Word{}
+	if mode != "sprint" {
+		vocabulary, e = a.quizVocabulary(r.Context(), id, words)
+		if e != nil {
+			internal(w, e)
+			return
+		}
+	}
+	nextAfter := after
+	for _, word := range words {
+		if word.ID > nextAfter {
+			nextAfter = word.ID
+		}
+	}
+	writeJSON(w, 200, map[string]any{"book": book, "words": words, "vocabulary": vocabulary, "total": total, "hasMore": len(words) < total, "nextAfter": nextAfter})
+}
+
+// quizVocabulary transmits only the fields needed to generate choices, with a
+// fixed cap independent of the full wordbook and its example-text volume.
+func (a *App) quizVocabulary(ctx context.Context, bookID int64, targets []Word) ([]Word, error) {
+	pool := make([]Word, 0, 200)
+	seen := map[int64]bool{}
+	for _, word := range targets {
+		if len(pool) == 200 {
+			break
+		}
+		seen[word.ID] = true
+		pool = append(pool, Word{ID: word.ID, BookID: word.BookID, Text: word.Text, Meaning: word.Meaning, ContentVersion: word.ContentVersion, Favorite: word.Favorite})
+	}
+	rows, e := a.db.QueryContext(ctx, "SELECT id,book_id,text,meaning,content_version FROM words WHERE book_id=? ORDER BY id LIMIT 200", bookID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var word Word
+		if e = rows.Scan(&word.ID, &word.BookID, &word.Text, &word.Meaning, &word.ContentVersion); e != nil {
+			return nil, e
+		}
+		if !seen[word.ID] && len(pool) < 200 {
+			pool = append(pool, word)
+			seen[word.ID] = true
+		}
+	}
+	return pool, rows.Err()
 }
 func validMode(s string) bool {
 	return s == "learn" || s == "review" || s == "sprint" || s == "reinforce"
@@ -384,12 +530,50 @@ func writeLearnResult(w http.ResponseWriter, stage int, revision int64) {
 	writeJSON(w, 200, map[string]any{"ok": true, "learnStage": stage, "learnRevision": revision, "completed": stage == 2})
 }
 func (a *App) favorites(w http.ResponseWriter, r *http.Request) {
-	words, e := a.readWords(r.Context(), currentID(r), "WHERE EXISTS(SELECT 1 FROM favorites f WHERE f.word_id=w.id AND f.user_id=?) ORDER BY w.id", currentID(r))
+	limit, offset, ok := pageBounds(r, 50)
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if !ok || len(query) > 200 {
+		fail(w, 400, "分页或搜索参数无效")
+		return
+	}
+	userID := currentID(r)
+	// Drive from the user's indexed favorites, never from the entire vocabulary.
+	from := ` FROM favorites selected JOIN words w ON w.id=selected.word_id LEFT JOIN progress p ON p.word_id=w.id AND p.user_id=? LEFT JOIN learn_progress lp ON lp.word_id=w.id AND lp.user_id=? WHERE selected.user_id=?`
+	args := []any{userID, userID, userID}
+	if query != "" {
+		from += " AND (w.text LIKE ? OR w.meaning LIKE ?)"
+		args = append(args, "%"+query+"%", "%"+query+"%")
+	}
+	var total int
+	if e := a.db.QueryRowContext(r.Context(), "SELECT COUNT(*)"+from, args...).Scan(&total); e != nil {
+		internal(w, e)
+		return
+	}
+	selectCols := `SELECT w.id,w.book_id,w.text,w.phonetic,w.meaning,w.example,w.example_meaning,1,COALESCE(p.status,'new'),COALESCE(p.reinforce,0),COALESCE(p.due_at,''),COALESCE(lp.stage,0),COALESCE(lp.revision,0),w.content_version`
+	rows, e := a.db.QueryContext(r.Context(), selectCols+from+" ORDER BY w.id LIMIT ? OFFSET ?", append(args, limit, offset)...)
 	if e != nil {
 		internal(w, e)
 		return
 	}
-	writeJSON(w, 200, words)
+	defer rows.Close()
+	words := []Word{}
+	for rows.Next() {
+		word, e := scanWord(rows)
+		if e != nil {
+			internal(w, e)
+			return
+		}
+		words = append(words, word)
+	}
+	if e = rows.Err(); e != nil {
+		internal(w, e)
+		return
+	}
+	if r.URL.Query().Get("paged") == "1" {
+		writeJSON(w, 200, map[string]any{"items": words, "total": total, "offset": offset, "limit": limit, "hasMore": offset+len(words) < total})
+	} else {
+		writeJSON(w, 200, words)
+	}
 }
 func (a *App) favorite(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
