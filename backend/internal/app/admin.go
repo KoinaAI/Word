@@ -290,16 +290,38 @@ func (a *App) importWords(w http.ResponseWriter, r *http.Request) {
  phonetic=COALESCE(?,words.phonetic), example=COALESCE(?,words.example), example_meaning=COALESCE(?,words.example_meaning),
  content_version=words.content_version+CASE WHEN words.text IS NOT excluded.text OR words.meaning IS NOT excluded.meaning
  OR words.phonetic IS NOT COALESCE(?,words.phonetic) OR words.example IS NOT COALESCE(?,words.example)
- OR words.example_meaning IS NOT COALESCE(?,words.example_meaning) THEN 1 ELSE 0 END`)
+ OR words.example_meaning IS NOT COALESCE(?,words.example_meaning) THEN 1 ELSE 0 END
+ RETURNING id,content_version`)
 	if err != nil {
 		internal(w, err)
 		return
 	}
 	defer stmt.Close()
+	previous, err := tx.PrepareContext(r.Context(), "SELECT content_version FROM words WHERE book_id=? AND text=?")
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	defer previous.Close()
 	for _, word := range req.Words {
-		if _, err = stmt.ExecContext(r.Context(), id, word.Text, word.Phonetic, word.Meaning, word.Example, word.ExampleMeaning, word.Phonetic, word.Example, word.ExampleMeaning, word.Phonetic, word.Example, word.ExampleMeaning); err != nil {
+		var oldVersion int64
+		previousErr := previous.QueryRowContext(r.Context(), id, word.Text).Scan(&oldVersion)
+		if previousErr != nil && !errors.Is(previousErr, sql.ErrNoRows) {
+			internal(w, previousErr)
+			return
+		}
+		var wordID, version int64
+		if err = stmt.QueryRowContext(r.Context(), id, word.Text, word.Phonetic, word.Meaning, word.Example, word.ExampleMeaning, word.Phonetic, word.Example, word.ExampleMeaning, word.Phonetic, word.Example, word.ExampleMeaning).Scan(&wordID, &version); err != nil {
 			internal(w, err)
 			return
+		}
+		if previousErr == nil && version != oldVersion {
+			// An unfinished recognition step cannot certify the replacement content.
+			// Keep revisions monotonic so already-open legacy clients also conflict.
+			if _, err = tx.ExecContext(r.Context(), `UPDATE learn_progress SET stage=0,revision=revision+1,updated_at=? WHERE word_id=? AND stage<2`, stamp(time.Now()), wordID); err != nil {
+				internal(w, err)
+				return
+			}
 		}
 	}
 	if err = tx.Commit(); err != nil {

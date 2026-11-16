@@ -47,6 +47,48 @@ func TestAdminImportPreservesOmittedFieldsAndVersionsContent(t *testing.T) {
 	assertContent("", "", "原例句", 3)
 }
 
+func TestAdminImportRestartsOnlyUnfinishedChangedContent(t *testing.T) {
+	a := testApp(t)
+	cookie, learner := guestCookie(t, a)
+	_, completed := guestCookie(t, a)
+	var wordID int64
+	var text string
+	if err := a.db.QueryRow("SELECT id,text FROM words WHERE book_id=1 ORDER BY id LIMIT 1").Scan(&wordID, &text); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []struct {
+		user  int64
+		stage int
+	}{{learner.ID, 1}, {completed.ID, 2}} {
+		if _, err := a.db.Exec("INSERT INTO learn_progress(user_id,word_id,stage,revision,updated_at) VALUES(?,?,?,3,?)", state.user, wordID, state.stage, "2026-11-16T00:00:00.000Z"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertStage := func(user int64, wantStage int, wantRevision int64) {
+		t.Helper()
+		var stage int
+		var revision int64
+		if err := a.db.QueryRow("SELECT stage,revision FROM learn_progress WHERE user_id=? AND word_id=?", user, wordID).Scan(&stage, &revision); err != nil {
+			t.Fatal(err)
+		}
+		if stage != wantStage || revision != wantRevision {
+			t.Fatalf("user %d got stage %d rev%d, want %d rev%d", user, stage, revision, wantStage, wantRevision)
+		}
+	}
+	for pass := 0; pass < 2; pass++ {
+		rec := adminRequest(t, a.importWords, "POST", 1, map[string]any{"words": []any{map[string]any{"text": text, "meaning": "替换后的新释义"}}})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+		}
+		assertStage(learner.ID, 0, 4)
+		assertStage(completed.ID, 2, 3)
+	}
+	stale := request(t, a, "POST", "/api/study/answer", learnPayload(wordID, 1, 3, "known", "legacy-old-content-0001"), cookie)
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("legacy stale stage accepted: %d %s", stale.Code, stale.Body.String())
+	}
+}
+
 func TestAdminImportReportsBadItemWithoutPartialWrite(t *testing.T) {
 	a := testApp(t)
 	rec := adminRequest(t, a.importWords, "POST", 1, map[string]any{"words": []any{map[string]any{"text": "valid-audit-word", "meaning": "合法"}, map[string]any{"text": "bad-audit-word", "meaning": " "}}})
