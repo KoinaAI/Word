@@ -6,8 +6,9 @@ import { Segment } from '@heroui-pro/react/segment'
 import { ListView } from '@heroui-pro/react/list-view'
 import { ArrowRight, Thunderbolt, BookOpen, ArrowsRotateRight, Star, Volume, ArrowLeft, Magnifier } from '@gravity-ui/icons'
 import { toast } from 'sonner'
-import { api, json, useUser } from '@/lib/api'
+import { api, getSessionEpoch, json, useUser } from '@/lib/api'
 import { patchWordFavorite } from '@/lib/library-cache'
+import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
 import { pronounce } from '@/lib/speech'
 import type { Book, User, Word } from '@/lib/types'
 import { BookCard, BookCover, Empty, Failure, IconButton, Loading, PageHeading, Progress } from '@/components/shared'
@@ -122,7 +123,10 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
   const toggle = async (word: Word) => {
     if (disabled || pending.current.has(word.id)) return
     const owner = client.getQueryData<User>(['me'])?.id
-    const previous = overrides.get(word.id) ?? word.favorite
+    if (!owner) return
+    const epoch = getSessionEpoch()
+    const isCurrent = () => getSessionEpoch() === epoch && client.getQueryData<User>(['me'])?.id === owner
+    const previous = readFavoriteIntent(client, owner, word.id, epoch, overrides.get(word.id) ?? word.favorite)
     const favorite = !previous
     const affected = { predicate: (query: { queryKey: readonly unknown[]; state: { data: unknown } }) => {
       const [scope, bookId] = query.queryKey
@@ -133,27 +137,25 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
       return ['study', 'admin'].includes(String(scope)) && (patchWordFavorite(query.state.data, word.id, true) !== query.state.data || patchWordFavorite(query.state.data, word.id, false) !== query.state.data)
     } }
     const patch = (value: boolean) => client.setQueriesData(affected, data => patchWordFavorite(data, word.id, value))
+    const mutation = enqueueFavoriteMutation({
+      scope: client, userId: owner, wordId: word.id, epoch, favorite, isCurrent,
+      send: async value => { await client.cancelQueries(affected); if (isCurrent()) await api(`/favorites/${word.id}`, json('POST', { favorite: value })) },
+    })
     pending.current.add(word.id)
     setPendingIds(new Set(pending.current))
     setOverrides(current => new Map(current).set(word.id, favorite))
+    void client.cancelQueries(affected).then(() => { if (mutation.isLatest()) patch(favorite) })
     try {
-      // Discard reads started before the mutation so they cannot overwrite the optimistic star.
+      const outcome = await mutation.result
+      if (outcome.cancelled || !mutation.isLatest()) return
       await client.cancelQueries(affected)
-      if (client.getQueryData<User>(['me'])?.id !== owner) return
-      patch(favorite)
-      await api(`/favorites/${word.id}`, json('POST', { favorite }))
-      if (client.getQueryData<User>(['me'])?.id !== owner) return
-      await client.cancelQueries(affected)
-      patch(favorite)
+      if (!mutation.isLatest()) return
+      patch(outcome.saved ? favorite : previous)
       void client.invalidateQueries(affected)
       void client.invalidateQueries({ queryKey: ['stats'] })
-    } catch (e) {
-      if (client.getQueryData<User>(['me'])?.id !== owner) return
-      await client.cancelQueries(affected)
-      patch(previous)
-      void client.invalidateQueries(affected)
-      toast.error((e as Error).message)
+      if (!outcome.saved) toast.error(outcome.error instanceof Error ? outcome.error.message : '收藏暂时没有保存成功')
     } finally {
+      mutation.release()
       pending.current.delete(word.id)
       setPendingIds(new Set(pending.current))
       setOverrides(current => { const next = new Map(current); next.delete(word.id); return next })
