@@ -45,6 +45,11 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.22.3"
+      - name: Validate all frontend learning and session logic for this version
+        run: node --test web/tests/*.test.ts
       - name: Sign in to GHCR
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,13 +96,25 @@ jobs:
               exit 1
             fi
           }
+          push_image() {
+            if docker push "$1" >package-push.log 2>&1; then
+              cat package-push.log
+              return
+            fi
+            cat package-push.log >&2
+            if grep -Eqi 'permission_denied: write_package|permission_denied.*write|denied:.*permission' package-push.log; then
+              echo '::error::GHCR rejected package write access. In the package settings, connect KoinaAI/Word and grant this repository Write under Manage Actions access. Workflow packages:write alone cannot grant access to an existing package.'
+              echo 'Package settings: https://github.com/orgs/KoinaAI/packages/container/word/settings' >&2
+            fi
+            return 1
+          }
           require_absent "$IMAGE:$VERSION"
           if [ "$PREBUILT" != 'true' ]; then
             require_absent "$IMAGE:sha-$REVISION"
-            docker push "$IMAGE:sha-$REVISION"
+            push_image "$IMAGE:sha-$REVISION"
           fi
           docker tag "$IMAGE:sha-$REVISION" "$IMAGE:$VERSION"
-          docker push "$IMAGE:$VERSION"
+          push_image "$IMAGE:$VERSION"
       - name: Pull by digest and verify delivered image
         run: |
           tested_id=$(docker image inspect "$IMAGE:sha-$REVISION" --format '{{.Id}}')

@@ -47,7 +47,9 @@ docker compose up -d --no-build
 
 SQLite 保存于 `word-data` 命名卷。`docker compose down` 保留学习数据；`docker compose down -v` 会删除数据。备份时先停止服务，再备份卷内的数据库文件。容器以 UID `10001` 运行，根文件系统只读，仅数据卷可写。
 
-默认只监听本机 `127.0.0.1:8080`。公网部署使用 HTTPS 反向代理，转发原始 `Host`，并设置 `COOKIE_SECURE=true`。如需从外部代理访问，可调整 `BIND_ADDRESS`。反向代理和证书由部署环境提供。
+默认只监听本机 `127.0.0.1:8080`。公网部署使用 HTTPS 反向代理，转发原始 `Host`，并设置 `COOKIE_SECURE=true`。如需从外部代理访问，可调整 `BIND_ADDRESS`。在 `TRUSTED_PROXIES` 中配置直接连接应用的可信代理 IP/CIDR（逗号分隔，例如 `172.20.0.2/32`）。应用仅从可信代理接受 `X-Forwarded-For`，从右向左剥离可信代理以识别客户端，避免全站共用认证配额。默认留空，不应配置为 `0.0.0.0/0`。反向代理和证书由部署环境提供。
+
+生产镜像为 JS/CSS/SVG/JSON 预生成 gzip；Go 根据 `Accept-Encoding` 协商提供，保留原文件类型并设置 `Vary: Accept-Encoding`。不支持 gzip 的客户端仍取得原文件。
 
 ## 从源码构建
 
@@ -114,7 +116,31 @@ ADMIN_PASSWORD="自己设置的管理员密码" DEV_ORIGIN=http://localhost:5173
 python3 scripts/smoke_container.py word:local
 ```
 
-GitHub Actions 的 `Scoped checks` 记录实际验证范围。只有可信分支推送能使用 `HEROUI_AUTH_TOKEN`；未配置 token 或 PR 环境中，前端/容器任务明确标记为跳过，不能把该运行当作完整前端构建证据。合并前应补充授权的本地构建结果。
+GitHub Actions 的 `Scoped checks` 要求每个受影响模块有成功证据。PR 不接触安装或发布凭据；可信分支推送可以使用官方 `HEROUI_AUTH_TOKEN`。前端纯函数测试覆盖 `web/tests/*.test.ts`。缺少官方 token 时，前端/容器任务虽然跳过，但 `results` 不再把缺失验证当作成功：它只接受同一确切 head 的受信分支构建，或指定维护者提交的 `licensed-build` 构建证明。后端或实际失败的构建不能被证明覆盖。
+
+`HEROUI_KEY` 不是官方 `HEROUI_AUTH_TOKEN` 的别名，不能直接映射；只配置前者不会开启官方安装。不要将完整的 Pro 包上传为公开 artifact。
+
+维护者使用已有合法缓存时，应在干净的确切提交上完成前端构建、镜像标签和运行检查，再发布证明。当前工作流只信任 `MournInk` 发布的证明，校验完整提交、镜像 ID、状态作者及提交链接；身份改变需同步更新工作流。
+
+```sh
+revision=$(git rev-parse HEAD)
+test -z "$(git status --porcelain)"
+npm --prefix web run build
+image="word:licensed-$revision"
+docker build --platform linux/amd64 \
+  --secret id=heroui_package,src=.secrets/heroui-pro.tgz \
+  --build-arg VCS_REF="$revision" -t "$image" .
+python3 scripts/verify_image.py "$image" "$revision"
+python3 scripts/smoke_container.py "$image"
+image_id=$(docker image inspect "$image" --format '{{.Id}}')
+image_short=$(printf '%s' "$image_id" | cut -c8-19)
+gh api --method POST "repos/KoinaAI/Word/statuses/$revision" \
+  -f state=success -f context=licensed-build \
+  -f description="Verified $revision image $image_short" \
+  -f target_url="https://github.com/KoinaAI/Word/commit/$revision"
+```
+
+证明必须在检查通过后写入；有新提交必须重新验证。SHA 候选镜像可以使用同一份已验证产物，不能只换标签冒充新提交。若 `results` 早于证明结束，可重跑该次失败检查。
 
 向已合入 `main` 的提交推送新的 `vX.Y.Z` 标签，将执行完整后端验证并发布 `ghcr.io/koinaai/word:vX.Y.Z`。流水线优先拉取已发布的 `sha-<完整提交 SHA>` 候选镜像，检查 `linux/amd64` 平台、源码仓库及提交标签，再运行容器检查并给同一份镜像添加版本标签。没有候选镜像时，使用仓库 Actions secret `HEROUI_AUTH_TOKEN` 从源码构建；两者都不存在则明确失败。
 
@@ -135,7 +161,9 @@ git tag -a "$version" -m "$version"
 git push origin "$version"
 ```
 
-发布流水线只接受当前提交对应的候选镜像，不重建或覆盖已有 SHA 镜像。版本镜像发布后会按 registry digest 回拉，确认镜像 ID 与已测试候选一致，再验证运行。GHCR 包需要授予本仓库的 Actions 访问权限。
+发布流水线只接受当前提交对应的候选镜像，不重建或覆盖已有 SHA 镜像。版本镜像发布后会按 registry digest 回拉，确认镜像 ID 与已测试候选一致，再验证运行。GHCR 包必须关联 `KoinaAI/Word`，并在包设置的 **Manage Actions access** 为本仓库授予 Write。工作流的 `packages: write` 只限定令牌权限，不能替代包本身的授权；发布遇到 `permission_denied: write_package` 时会明确指出需要修复包的 Actions 写权限。设置入口：https://github.com/orgs/KoinaAI/packages/container/word/settings。
+
+保护默认分支时，至少将 `results` 设为必需检查并要求 PR。完整建议载荷见 [branch-protection.json](docs/branch-protection.json)，应用前应核对当前保护以保留组织额外规则；`licensed-build` 证明由 `results` 检查具体作者和内容，无需把它设为独立必需状态。
 
 如果发布在部分标签已推送后中断，直接重跑会因标签已存在而停止。先核对已发布镜像的 digest、源码提交标签和验证结果，再从该 digest 恢复缺失的标签或使用新版本修复；不要移动版本标签或覆盖旧镜像。
 

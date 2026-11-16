@@ -40,9 +40,9 @@ def main():
         cookies = http.cookiejar.CookieJar()
         client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
 
-        def request(path, payload=None):
+        def request(path, payload=None, method=None):
             body = None if payload is None else json.dumps(payload).encode()
-            req = urllib.request.Request(base + path, data=body, headers={"Content-Type": "application/json"})
+            req = urllib.request.Request(base + path, data=body, method=method, headers={"Content-Type": "application/json"})
             with client.open(req, timeout=3) as response:
                 return json.load(response)
 
@@ -78,7 +78,10 @@ def main():
         assert any(item["id"] == word["id"] for item in request("/api/favorites")), "SQLite write was not persisted"
         admin = request("/api/auth/login", {"email": "admin@word.local", "password": admin_password})
         assert admin["role"] == "admin"
-        assert request("/api/admin/navigation"), "Admin navigation is missing"
+        navigation = request("/api/admin/navigation?versioned=1")
+        assert navigation["items"], "Admin navigation is missing"
+        saved = request("/api/admin/navigation", {"items": navigation["items"], "version": navigation["version"]}, method="PUT")
+        assert saved["items"] == navigation["items"], "Versioned navigation was not preserved"
         docker("stop", "--time", "10", name)
         assert docker("inspect", "--format", "{{.State.ExitCode}}", name) == "0"
         print("Container check passed: non-root, health, SPA deep link, guest, SQLite persistence, admin, clean shutdown.")
