@@ -92,19 +92,19 @@ func TestAdminNavigationValidationAndPersistence(t *testing.T) {
 	original := defaultNavigation()
 	changed := append([]Navigation(nil), original...)
 	changed[0].Path = "https://example.test"
-	rec := adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed})
+	rec := adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed, "version": 0})
 	if rec.Code != 400 {
 		t.Fatal("unregistered route accepted")
 	}
 	changed = append([]Navigation(nil), original...)
 	changed[3].Enabled = false
-	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed})
+	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed, "version": 0})
 	if rec.Code != 400 {
 		t.Fatal("configuration route could be disabled")
 	}
 	changed = append([]Navigation(nil), original...)
 	changed[0].SortOrder = 1
-	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed})
+	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed, "version": 0})
 	if rec.Code != 400 {
 		t.Fatal("ambiguous sort order accepted")
 	}
@@ -113,7 +113,7 @@ func TestAdminNavigationValidationAndPersistence(t *testing.T) {
 	changed[0].Enabled = false
 	changed[0].SortOrder = 2
 	changed[2].SortOrder = 0
-	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed})
+	rec = adminRequest(t, a.saveNavigation, "PUT", 0, map[string]any{"items": changed, "version": 0})
 	if rec.Code != 200 {
 		t.Fatal(rec.Body.String())
 	}
