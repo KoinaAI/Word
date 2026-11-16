@@ -57,7 +57,7 @@ function NavigationEditor({ initial }: { initial: NavigationState }) {
   const conflict = remoteChanged || mutation.error instanceof ApiError && mutation.error.status === 409
   return <div className="space-y-6">
     <PageHeading eyebrow="站点设置" title="导航配置" description="调整后台入口，保存后立即更新导航与可访问页面。" action={<Button isPending={mutation.isPending} isDisabled={!draft.dirty || conflict || items.some(item => !item.label.trim())} onPress={() => mutation.mutate()}>保存配置</Button>} />
-    {draft.restored && <p role="status" className="text-sm text-muted">已恢复未保存配置。离开页面会保留草稿，保存前将检查是否有其他管理员更新。</p>}
+    {draft.restored && <p role="status" className="text-sm text-muted">已恢复未保存配置。离开页面会保留草稿，保存前将检查是否有其他管理员更新。</p>}{draft.storageError && <p role="alert" className="text-sm text-danger">{draft.storageError}</p>}
     {conflict && <Card variant="secondary" className="p-4"><Card.Header><Card.Title>配置已被更新</Card.Title><Card.Description>当前草稿仍保留。请先复制需要保留的内容，再载入最新配置；系统不会覆盖其他管理员的修改。</Card.Description></Card.Header><Card.Footer><Button variant="secondary" isPending={reloading} onPress={() => { void reload() }}>放弃草稿并载入最新配置</Button></Card.Footer></Card>}
     <div className="space-y-4">
       {items.map((item, index) => <Card key={item.id} className="p-5">

@@ -76,7 +76,7 @@ export function AdminUsers() {
     {query.isPending ? <Loading label="正在加载用户列表" /> : query.isError ? <Failure error={query.error} retry={query.refetch} /> : <div aria-busy={query.isFetching} className="space-y-4">
       <DataGrid aria-label="用户列表" data={users} columns={columns} getRowId={user => user.id} selectionMode="none" variant="secondary" contentClassName="min-w-[760px]" scrollContainerClassName="max-h-[65vh] overflow-auto" stickyHeader renderEmptyState={() => <Empty title="没有匹配的用户" description="试试其他昵称、邮箱或账户类型。" />} />
       <nav aria-label="用户列表分页" className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm tabular-nums text-muted">{total ? `${count(filters.offset + 1)}–${count(filters.offset + users.length)} / ${count(total)} 位用户` : '暂无用户'} · 每页 {pageSize} 位</p>
+        <p className="text-sm tabular-nums text-muted">{total ? `${count((query.data?.offset || 0) + 1)}–${count((query.data?.offset || 0) + users.length)} / ${count(total)} 位用户` : '暂无用户'} · 每页 {pageSize} 位</p>
         <div className="flex gap-2"><Button variant="secondary" isDisabled={filters.offset === 0 || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: Math.max(0, current.offset - pageSize) }))}>上一页</Button><Button variant="secondary" isDisabled={!query.data?.hasMore || query.isFetching} onPress={() => setFilters(current => ({ ...current, offset: current.offset + pageSize }))}>下一页</Button></div>
       </nav>
     </div>}
