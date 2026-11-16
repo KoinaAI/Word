@@ -22,7 +22,7 @@ export function normalizeSpelling(value: string): string {
 
 function meaningTerms(value: string): string[] {
   return value.normalize('NFKC').toLowerCase().split(/[;；,，、\n]/)
-    .map(term => term.trim().replace(/^(?:(?:v\s*[.]?\s*[ti]|vt|vi|adj|adv|prep|pron|conj|interj|num|art|aux|n|v|a|ad)\s*[.]?\s*)+/i, '').replace(/\s/g, '').trim())
+    .map(term => term.trim().replace(/^(?:(?:v\s*\.\s*[ti]|vt|vi|adj|adv|prep|pron|conj|interj|num|art|aux|n|v|a|ad)\s*\.\s*)+/i, '').replace(/\s/g, '').trim())
     .filter(Boolean)
 }
 

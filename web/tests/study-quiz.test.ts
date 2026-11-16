@@ -43,7 +43,25 @@ test('normalizes common POS forms and accepts exact equivalent spellings', () =>
   assert.equal(isCorrectSpelling(typing, 'fast'), true)
   assert.equal(isCorrectSpelling(typing, 'FAST'), true)
   assert.equal(isCorrectSpelling(typing, 'rapid'), false)
-  assert.match(typing.spellingHint, /一个可接受的答案以/) 
+  assert.match(typing.spellingHint, /一个可接受的答案以/)
+})
+
+test('requires punctuation on POS abbreviations and keeps ordinary English definition prefixes', () => {
+  for (const [left, right] of [['an example', 'example'], ['available', 'ilable']]) {
+    const target = word(1, 'target', left!)
+    const other = word(2, 'other', right!)
+    const question = createQuizQuestion(target, [target, other], 'zh-en', false, stableRandom)
+    assert.equal(question.kind, 'choice')
+    assert.equal(question.options.some(option => option.id === other.id), true)
+    assert.equal(isCorrectSpelling(question, other.text), false)
+  }
+  for (const abbreviation of ['vt.', 'v.t.', 'v. t.']) {
+    const target = word(1, 'achieve', 'v. 实现')
+    const equivalent = word(2, 'realize', `${abbreviation} 实现`)
+    const question = createQuizQuestion(target, [target, equivalent], 'zh-en', false, stableRandom)
+    assert.equal(question.kind, 'typing')
+    assert.equal(isCorrectSpelling(question, equivalent.text), true)
+  }
 })
 
 test('deduplicates large queues without quadratic first-pass scans', () => {
