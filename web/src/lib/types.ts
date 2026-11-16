@@ -5,16 +5,19 @@ export type User = {
 export type Book = {
   id: number; title: string; subtitle: string; description: string; category: string;
   color: string; wordCount: number; learnedCount: number; dueCount: number;
+  newCount: number; unstartedCount: number; learningCount: number; reinforceCount: number; sprintCount: number;
 }
 export type Word = {
   id: number; bookId: number; text: string; phonetic: string; meaning: string;
   example: string; exampleMeaning: string; favorite: boolean;
   status: 'new' | 'learning' | 'mastered'; reinforce: boolean; dueAt?: string;
-  learnStage?: 0 | 1 | 2; learnRevision?: number;
+  learnStage?: 0 | 1 | 2; learnRevision?: number; contentVersion?: number;
 }
 export type Mode = 'learn' | 'review' | 'sprint' | 'reinforce'
 export type Answer = 'known' | 'unknown' | 'unsure-known' | 'unsure-unknown'
-export type Study = { book: Book; words: Word[]; total: number }
+export type Study = { book: Book; words: Word[]; total: number; hasMore: boolean; nextAfter: number; vocabulary: Word[] }
+export type PageResult<T> = { items: T[]; total: number; offset: number; limit: number; hasMore: boolean }
+export type BookDetailResult = Omit<PageResult<Word>, 'items'> & { book: Book; words: Word[] }
 export type Activity = { date: string; count: number }
 export type Recent = { id: number; text: string; meaning: string; answer: string; createdAt: string }
 export type Stats = {
