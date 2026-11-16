@@ -42,7 +42,7 @@ function App() {
     let completed = false
     const move = () => {
       if (completed) return
-      const heading = document.querySelector<HTMLElement>('#page-content h1, main h1, .auth-form h2')
+      const heading = document.querySelector<HTMLElement>(pathname === '/login' ? '.auth-form h2' : '#page-content h1, main h1')
       if (!heading) return
       completed = true
       heading.tabIndex = -1
