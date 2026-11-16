@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { api, getSessionEpoch, json, useUser } from '@/lib/api'
 import { patchWordFavorite } from '@/lib/library-cache'
 import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
+import { saveFavoriteCAS } from '@/lib/favorite-request'
 import { pronounce } from '@/lib/speech'
 import type { Book, User, Word } from '@/lib/types'
 import { BookCard, BookCover, Empty, Failure, IconButton, Loading, PageHeading, Progress } from '@/components/shared'
@@ -139,7 +140,7 @@ export function WordList({ words, disabled = false }: { words: Word[]; disabled?
     const patch = (value: boolean) => client.setQueriesData(affected, data => patchWordFavorite(data, word.id, value))
     const mutation = enqueueFavoriteMutation({
       scope: client, userId: owner, wordId: word.id, epoch, favorite, isCurrent,
-      send: async value => { await client.cancelQueries(affected); if (isCurrent()) await api(`/favorites/${word.id}`, json('POST', { favorite: value })) },
+      send: async value => { await client.cancelQueries(affected); return saveFavoriteCAS(api, word.id, value, isCurrent) },
     })
     pending.current.add(word.id)
     setPendingIds(new Set(pending.current))
