@@ -18,7 +18,9 @@ function abortReason(signal: AbortSignal): unknown {
  * response parsing; on ordinary HTTP origins an IndexedDB readwrite transaction
  * provides the same exclusive scope until the task settles. If both browser
  * facilities are unavailable, login remains usable but locked=false forbids
- * sending a renewal Cookie from an uncoordinated identity read.
+ * sending a renewal Cookie from an uncoordinated identity read. Unexpected
+ * browser storage failure aborts the request without replay: no lock primitive
+ * can retain exclusivity after the browser itself discards its transaction.
  */
 export async function withSessionCookieLock<T>(signal: AbortSignal, task: CookieTask<T>, environment?: LockEnvironment): Promise<T> {
   if (signal.aborted) throw abortReason(signal)
