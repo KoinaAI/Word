@@ -211,6 +211,7 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/study/answer/undo", a.auth(a.undoAnswer, false))
 	a.mux.HandleFunc("GET /api/stats", a.auth(a.stats, false))
 	a.mux.HandleFunc("GET /api/favorites", a.auth(a.favorites, false))
+	a.mux.HandleFunc("GET /api/favorites/{id}", a.auth(a.favoriteState, false))
 	a.mux.HandleFunc("POST /api/favorites/{id}", a.auth(a.favorite, false))
 	a.mux.HandleFunc("GET /api/admin/stats", a.auth(a.adminStats, true))
 	a.mux.HandleFunc("GET /api/admin/books", a.auth(a.adminBooks, true))
