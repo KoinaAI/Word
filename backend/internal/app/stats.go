@@ -11,7 +11,13 @@ import (
 func (a *App) activity(ctx context.Context, userID int64) ([]Activity, error) {
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	start := today.AddDate(0, 0, -13)
-	rows, e := a.db.QueryContext(ctx, "SELECT substr(created_at,1,10),COUNT(*) FROM answers WHERE created_at>=? AND (?=0 OR user_id=?) GROUP BY substr(created_at,1,10)", stamp(start), userID, userID)
+	query := "SELECT substr(created_at,1,10),COUNT(*) FROM answers WHERE undone=0 AND created_at>=?"
+	args := []any{stamp(start)}
+	if userID != 0 {
+		query += " AND user_id=?"
+		args = append(args, userID)
+	}
+	rows, e := a.db.QueryContext(ctx, query+" GROUP BY substr(created_at,1,10)", args...)
 	if e != nil {
 		return nil, e
 	}
@@ -36,7 +42,13 @@ func (a *App) activity(ctx context.Context, userID int64) ([]Activity, error) {
 	return result, nil
 }
 func (a *App) recent(ctx context.Context, userID int64) ([]Recent, error) {
-	rows, e := a.db.QueryContext(ctx, "SELECT id,word_text,word_meaning,answer,created_at FROM answers WHERE (?=0 OR user_id=?) ORDER BY id DESC LIMIT 10", userID, userID)
+	query := "SELECT id,word_text,word_meaning,answer,created_at FROM answers WHERE undone=0"
+	args := []any{}
+	if userID != 0 {
+		query += " AND user_id=?"
+		args = append(args, userID)
+	}
+	rows, e := a.db.QueryContext(ctx, query+" ORDER BY id DESC LIMIT 10", args...)
 	if e != nil {
 		return nil, e
 	}
@@ -52,7 +64,7 @@ func (a *App) recent(ctx context.Context, userID int64) ([]Recent, error) {
 	return result, rows.Err()
 }
 func (a *App) streak(ctx context.Context, id int64) (int, error) {
-	rows, e := a.db.QueryContext(ctx, "SELECT DISTINCT substr(created_at,1,10) AS day FROM answers WHERE user_id=? ORDER BY day DESC", id)
+	rows, e := a.db.QueryContext(ctx, "SELECT DISTINCT substr(created_at,1,10) AS day FROM answers WHERE user_id=? AND undone=0 ORDER BY day DESC", id)
 	if e != nil {
 		return 0, e
 	}
@@ -94,7 +106,7 @@ func (a *App) stats(w http.ResponseWriter, r *http.Request) {
 		Activity   []Activity `json:"activity"`
 		Recent     []Recent   `json:"recent"`
 	}
-	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM progress WHERE user_id=? AND status='mastered'),(SELECT COUNT(*) FROM progress WHERE user_id=? AND due_at<>'' AND due_at<=?),(SELECT COUNT(*) FROM progress WHERE user_id=? AND reinforce=1),(SELECT COUNT(*) FROM favorites WHERE user_id=?),(SELECT COUNT(DISTINCT submitted_word_id) FROM answers WHERE user_id=? AND created_at>=?),(SELECT COUNT(*) FROM words)`, id, id, stamp(now), id, id, id, start).Scan(&result.Learned, &result.Due, &result.Reinforce, &result.Favorites, &result.Today, &result.TotalWords)
+	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM progress WHERE user_id=? AND status='mastered'),(SELECT COUNT(*) FROM progress WHERE user_id=? AND due_at<>'' AND due_at<=?),(SELECT COUNT(*) FROM progress WHERE user_id=? AND reinforce=1),(SELECT COUNT(*) FROM favorites WHERE user_id=?),(SELECT COUNT(DISTINCT submitted_word_id) FROM answers WHERE user_id=? AND undone=0 AND created_at>=?),(SELECT COUNT(*) FROM words)`, id, id, stamp(now), id, id, id, start).Scan(&result.Learned, &result.Due, &result.Reinforce, &result.Favorites, &result.Today, &result.TotalWords)
 	if e != nil {
 		internal(w, e)
 		return
@@ -123,7 +135,7 @@ func (a *App) adminStats(w http.ResponseWriter, r *http.Request) {
 		Activity    []Activity `json:"activity"`
 		Recent      []Recent   `json:"recent"`
 	}
-	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM users),(SELECT COUNT(*) FROM books),(SELECT COUNT(*) FROM words),(SELECT COUNT(*) FROM answers),(SELECT COUNT(DISTINCT user_id) FROM answers WHERE created_at>=?)`, stamp(time.Now().UTC().Truncate(24*time.Hour))).Scan(&result.Users, &result.Books, &result.Words, &result.Answers, &result.ActiveToday)
+	e := a.db.QueryRowContext(r.Context(), `SELECT (SELECT COUNT(*) FROM users),(SELECT COUNT(*) FROM books),(SELECT COUNT(*) FROM words),(SELECT COUNT(*) FROM answers WHERE undone=0),(SELECT COUNT(DISTINCT user_id) FROM answers WHERE undone=0 AND created_at>=?)`, stamp(time.Now().UTC().Truncate(24*time.Hour))).Scan(&result.Users, &result.Books, &result.Words, &result.Answers, &result.ActiveToday)
 	if e != nil {
 		internal(w, e)
 		return
