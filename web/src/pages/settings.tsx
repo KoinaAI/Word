@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { ApiError, api, clearAuthSession, json, syncAuthUser, useUser } from '@/lib/api'
 import { pronounce } from '@/lib/speech'
 import { readPreference, writePreference } from '@/lib/preferences'
+import { getSessionCookieLockMode } from '@/lib/session-lock'
 import { validatePassword, validateProfileName } from '@/lib/form-validation'
 import { useFormDraft } from '@/hooks/use-form-draft'
 import type { Navigation, User } from '@/lib/types'
@@ -32,6 +33,7 @@ function SettingsForm({ user }: { user: User }) {
   const [error, setError] = useState('')
   const [autoAudio, setAutoAudio] = useState(() => readPreference('word-auto-audio', 'false') === 'true')
   const [accent, setAccent] = useState(() => readPreference('word-accent', 'en-US'))
+  const sessionStorageUnavailable = getSessionCookieLockMode() === 'unavailable'
   const nameError = validateProfileName(name)
   const goalNumber = Number(goal)
   const goalError = !goal.trim() || !Number.isInteger(goalNumber) || goalNumber < 1 || goalNumber > 500 ? '请输入 1–500 之间的整数。' : ''
@@ -55,6 +57,7 @@ function SettingsForm({ user }: { user: User }) {
   }
   return <div className="page-stack settings-page"><PageHeading eyebrow="按照自己的节奏" title="让学习，更适合你" description="小一点的目标，坚持久一点。找到你舒服的学习方式。" /><form onSubmit={save}><Card><Card.Header><Card.Title>学习计划</Card.Title><Card.Description>每次按自己的精力，学一组新词。</Card.Description></Card.Header><Card.Content className="space-y-7">
     {draft.restored && <p className="text-sm text-muted" role="status">已恢复当前标签页中的未保存草稿。</p>}{draft.storageError && <p role="alert" className="text-sm text-danger">{draft.storageError}</p>}
+    {sessionStorageUnavailable && <p role="status" className="text-sm text-warning">浏览器限制了会话协调，当前登录无法自动延长有效期。请注册保留进度，或在浏览器中允许本站使用存储。</p>}
     <TextField isRequired isDisabled={pending} isInvalid={Boolean(nameError)}><Label>怎么称呼你</Label><Input variant="secondary" value={name} onChange={event => change({ name: event.target.value })} maxLength={80} aria-describedby="profile-name-help" /><p id="profile-name-help" className={`mt-2 text-xs ${nameError ? 'text-danger' : 'text-muted'}`}>{nameError || '最多 40 个字。'}</p></TextField>
     <div className="settings-row"><div><h3>每轮新词数量</h3><p>可直接输入 1–500，每天可以学习多轮。</p></div><TextField isRequired isDisabled={pending} isInvalid={Boolean(goalError)} className="w-28 shrink-0"><Label className="sr-only">每轮新词数量</Label><Input type="number" inputMode="numeric" variant="secondary" value={goal} min={1} max={500} step={1} onChange={event => change({ goal: event.target.value })} aria-describedby="profile-goal-help" /></TextField></div><p id="profile-goal-help" className={`text-xs ${goalError ? 'text-danger' : 'text-muted'}`}>{goalError || '数量仅影响每一轮，不限制当天的学习轮数。'}</p>
     <TextField isDisabled={pending}><Label>目标考试日期（选填）</Label><Input type="date" variant="secondary" value={exam} onChange={event => change({ exam: event.target.value })} /><p className="text-xs text-muted mt-2">用一个明确的日子，给努力一个方向。</p></TextField>
