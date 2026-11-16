@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'motion/react'
@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, ArrowRotateLeft, BookOpen, Check, ChevronDown, C
 import { Button, Card, Input, TextField } from '@heroui/react'
 import { Empty, Failure, IconButton, Loading, Progress } from '@/components/shared'
 import { ApiError, api, getSessionEpoch, json, useUser } from '@/lib/api'
-import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
+import { enqueueFavoriteMutation, getFavoriteIntentVersion, readFavoriteIntent, subscribeFavoriteIntents } from '@/lib/favorite-mutations'
 import { saveFavoriteCAS } from '@/lib/favorite-request'
 import { pronounce, stopPronunciation } from '@/lib/speech'
 import { readPreference } from '@/lib/preferences'
@@ -131,6 +131,7 @@ type QuizTransaction = { payload: Submission; questionKey: string; correct: bool
 function QuizSession({ initialStudy, vocabulary, studyQueryKey, pendingKey, userId, mode, exit, reload, nextBatch }: { initialStudy: StudyBatch; vocabulary: Word[]; studyQueryKey: QueryKey; pendingKey: string; userId: number; mode: Mode; exit: () => void; reload: () => void; nextBatch: () => void }) {
   const navigate = useNavigate()
   const client = useQueryClient()
+  useSyncExternalStore(listener => subscribeFavoriteIntents(client, listener), () => getFavoriteIntentVersion(client))
   const reduceMotion = useReducedMotion()
   const [round, setRound] = useState<QuizRound | LearnRound>(() => mode === 'learn' ? createLearnRound(initialStudy.words, vocabulary) : createQuizRound(initialStudy.words, vocabulary))
   const [feedback, setFeedback] = useState<QuizFeedback | null>(null)
@@ -274,7 +275,7 @@ function QuizSession({ initialStudy, vocabulary, studyQueryKey, pendingKey, user
       const result = await mutation.result
       if (!mutation.isLatest() || result.cancelled) return
       if (!result.saved) {
-        if (mounted.current) toast.error(result.error instanceof Error ? result.error.message : '收藏暂时没有保存成功')
+        toast.error(result.error instanceof Error ? result.error.message : '收藏暂时没有保存成功')
         return
       }
       await Promise.all(['study', 'books', 'favorites'].map(queryKey => client.cancelQueries({ queryKey: [queryKey] })))

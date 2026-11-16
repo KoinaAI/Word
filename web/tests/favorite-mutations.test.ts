@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { enqueueFavoriteMutation, readFavoriteIntent } from '../src/lib/favorite-mutations.ts'
+import { enqueueFavoriteMutation, getFavoriteIntentVersion, readFavoriteIntent, subscribeFavoriteIntents } from '../src/lib/favorite-mutations.ts'
 
 function deferred() {
   let resolve!: () => void
@@ -29,7 +29,9 @@ test('serializes delayed writes across screens and suppresses the older cache re
   firstResponse.resolve()
   await first.result
   if (first.isLatest()) cache = true
+  const versionBeforeOldRelease = getFavoriteIntentVersion(scope)
   first.release()
+  assert.equal(getFavoriteIntentVersion(scope), versionBeforeOldRelease)
   await secondStarted.promise
   assert.deepEqual(calls, [true, false])
   assert.equal(cache, false)
@@ -62,4 +64,33 @@ test('does not send queued requests from an identity epoch that was replaced', a
   assert.deepEqual(calls, [true, true])
   assert.equal(newIdentity.isLatest(), true)
   first.release(); oldQueued.release(); newIdentity.release()
+})
+
+test('notifies a mounted screen when a failed intent is released without a cache write', async () => {
+  const scope = {}
+  const versions: number[] = []
+  const displayed: boolean[] = []
+  assert.equal(getFavoriteIntentVersion(scope), 0)
+  const unsubscribe = subscribeFavoriteIntents(scope, () => {
+    versions.push(getFavoriteIntentVersion(scope))
+    displayed.push(readFavoriteIntent(scope, 1, 8, 0, false))
+  })
+  assert.equal(getFavoriteIntentVersion(scope), 0)
+  const error = new Error('save failed')
+  const failed = enqueueFavoriteMutation({ scope, userId: 1, wordId: 8, epoch: 0, favorite: true, isCurrent: () => true, send: async () => { throw error } })
+  assert.deepEqual(versions, [1])
+  assert.deepEqual(displayed, [true])
+  assert.deepEqual(await failed.result, { saved: false, cancelled: false, error })
+  assert.equal(getFavoriteIntentVersion(scope), 1)
+  failed.release()
+  assert.deepEqual(versions, [1, 2])
+  assert.deepEqual(displayed, [true, false])
+  assert.equal(readFavoriteIntent(scope, 1, 8, 0, false), false)
+  failed.release()
+  assert.equal(getFavoriteIntentVersion(scope), 2)
+  unsubscribe()
+  const later = enqueueFavoriteMutation({ scope, userId: 1, wordId: 8, epoch: 0, favorite: true, isCurrent: () => true, send: async () => {} })
+  await later.result
+  later.release()
+  assert.deepEqual(versions, [1, 2])
 })

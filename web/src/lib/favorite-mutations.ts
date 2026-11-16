@@ -7,6 +7,31 @@ export type FavoriteMutation = {
 type FavoriteIntent = { generation: number; epoch: number; favorite: boolean }
 type FavoriteLane = { generation: number; tail: Promise<void>; intent?: FavoriteIntent }
 const scopes = new WeakMap<object, Map<string, FavoriteLane>>()
+type FavoriteIntentSubscription = { version: number; listeners: Set<() => void> }
+const subscriptions = new WeakMap<object, FavoriteIntentSubscription>()
+
+function subscriptionFor(scope: object) {
+  let subscription = subscriptions.get(scope)
+  if (!subscription) { subscription = { version: 0, listeners: new Set() }; subscriptions.set(scope, subscription) }
+  return subscription
+}
+
+function publishFavoriteIntents(scope: object) {
+  const subscription = subscriptionFor(scope)
+  subscription.version++
+  for (const listener of [...subscription.listeners]) listener()
+}
+
+/** A stable snapshot for useSyncExternalStore, including changes without query-cache writes. */
+export function getFavoriteIntentVersion(scope: object): number {
+  return subscriptions.get(scope)?.version ?? 0
+}
+
+export function subscribeFavoriteIntents(scope: object, listener: () => void): () => void {
+  const subscription = subscriptionFor(scope)
+  subscription.listeners.add(listener)
+  return () => { subscription.listeners.delete(listener) }
+}
 
 function lanesFor(scope: object) {
   let lanes = scopes.get(scope)
@@ -44,11 +69,15 @@ export function enqueueFavoriteMutation({ scope, userId, wordId, epoch, favorite
     if (currentLane.tail === settled && !currentLane.intent) lanes.delete(key)
   }
   void settled.then(cleanup)
+  publishFavoriteIntents(scope)
   return {
     result,
     isLatest,
     release: () => {
-      if (currentLane.intent?.generation === generation) currentLane.intent = undefined
+      if (currentLane.intent?.generation === generation) {
+        currentLane.intent = undefined
+        publishFavoriteIntents(scope)
+      }
       cleanup()
     },
   }
