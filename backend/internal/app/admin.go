@@ -288,7 +288,7 @@ func (a *App) importWords(w http.ResponseWriter, r *http.Request) {
  ON CONFLICT(book_id,text) DO UPDATE SET
  text=excluded.text, meaning=excluded.meaning,
  phonetic=COALESCE(?,words.phonetic), example=COALESCE(?,words.example), example_meaning=COALESCE(?,words.example_meaning),
- content_version=words.content_version+CASE WHEN words.text IS NOT excluded.text OR words.meaning IS NOT excluded.meaning
+ content_version=words.content_version+CASE WHEN words.text COLLATE BINARY IS NOT excluded.text COLLATE BINARY OR words.meaning IS NOT excluded.meaning
  OR words.phonetic IS NOT COALESCE(?,words.phonetic) OR words.example IS NOT COALESCE(?,words.example)
  OR words.example_meaning IS NOT COALESCE(?,words.example_meaning) THEN 1 ELSE 0 END
  RETURNING id,content_version`)

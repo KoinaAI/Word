@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAdminImportPreservesOmittedFieldsAndVersionsContent(t *testing.T) {
@@ -200,5 +201,37 @@ func TestAdminUsersPaginatesAndFilters(t *testing.T) {
 	}
 	if len(legacy) != 50 {
 		t.Fatalf("legacy response was not bounded: %d", len(legacy))
+	}
+}
+
+func TestAdminImportCaseOnlyTextChangeInvalidatesQuestion(t *testing.T) {
+	a := testApp(t)
+	cookie, user := guestCookie(t, a)
+	result, err := a.db.Exec("INSERT INTO words(book_id,text,meaning) VALUES(1,'polish','抛光')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.db.Exec("INSERT INTO learn_progress(user_id,word_id,stage,revision,updated_at) VALUES(?,?,1,1,?)", user.ID, id, stamp(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	rec := adminRequest(t, a.importWords, "POST", 1, map[string]any{"words": []any{map[string]any{"text": "Polish", "meaning": "抛光"}}})
+	if rec.Code != 200 {
+		t.Fatal(rec.Body.String())
+	}
+	var version, revision int64
+	var stage int
+	if err = a.db.QueryRow("SELECT content_version FROM words WHERE id=?", id).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("case change retained stale content: version%d %v", version, err)
+	}
+	if err = a.db.QueryRow("SELECT stage,revision FROM learn_progress WHERE user_id=? AND word_id=?", user.ID, id).Scan(&stage, &revision); err != nil || stage != 0 || revision != 2 {
+		t.Fatalf("case change retained stage%d revision%d %v", stage, revision, err)
+	}
+	payload := map[string]any{"wordId": id, "mode": "learn", "answer": "known", "eventId": "audit-case-content-stale", "learnStage": 1, "learnRevision": 1, "contentVersion": 1}
+	if rec = request(t, a, "POST", "/api/study/answer", payload, cookie); rec.Code != 409 {
+		t.Fatal("case-only stale question accepted")
 	}
 }
