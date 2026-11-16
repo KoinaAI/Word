@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -360,17 +361,18 @@ func nextMemory(old memoryState, mode, answer string, now time.Time) (memoryStat
 }
 func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		WordID        int64  `json:"wordId"`
-		Mode          string `json:"mode"`
-		Answer        string `json:"answer"`
-		EventID       string `json:"eventId"`
-		LearnStage    *int   `json:"learnStage"`
-		LearnRevision *int64 `json:"learnRevision"`
+		WordID         int64  `json:"wordId"`
+		Mode           string `json:"mode"`
+		Answer         string `json:"answer"`
+		EventID        string `json:"eventId"`
+		LearnStage     *int   `json:"learnStage"`
+		LearnRevision  *int64 `json:"learnRevision"`
+		ContentVersion *int64 `json:"contentVersion"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.WordID < 1 || !validMode(req.Mode) || !validAnswer(req.Answer) || len(req.EventID) < 8 || len(req.EventID) > 128 || strings.TrimSpace(req.EventID) != req.EventID {
+	if (req.ContentVersion != nil && *req.ContentVersion < 1) || req.WordID < 1 || !validMode(req.Mode) || !validAnswer(req.Answer) || len(req.EventID) < 8 || len(req.EventID) > 128 || strings.TrimSpace(req.EventID) != req.EventID {
 		fail(w, 400, "学习记录参数无效")
 		return
 	}
@@ -396,8 +398,13 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	var previousID, previousWord int64
 	var previousMode, previousAnswer string
-	e = tx.QueryRow("SELECT id,submitted_word_id,mode,answer FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousID, &previousWord, &previousMode, &previousAnswer)
+	var previousUndone bool
+	e = tx.QueryRow("SELECT id,submitted_word_id,mode,answer,undone FROM answers WHERE user_id=? AND event_id=?", u.ID, req.EventID).Scan(&previousID, &previousWord, &previousMode, &previousAnswer, &previousUndone)
 	if e == nil {
+		if previousUndone {
+			fail(w, 409, "这次评分已撤销，请重新作答")
+			return
+		}
 		if previousWord != req.WordID || previousMode != req.Mode || previousAnswer != req.Answer {
 			fail(w, 409, "记录编号已用于其他评分")
 			return
@@ -424,7 +431,8 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var text, meaning string
-	e = tx.QueryRow("SELECT text,meaning FROM words WHERE id=?", req.WordID).Scan(&text, &meaning)
+	var contentVersion int64
+	e = tx.QueryRow("SELECT text,meaning,content_version FROM words WHERE id=?", req.WordID).Scan(&text, &meaning, &contentVersion)
 	if errors.Is(e, sql.ErrNoRows) {
 		fail(w, 404, "单词不存在")
 		return
@@ -433,11 +441,26 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 		internal(w, e)
 		return
 	}
+	if req.ContentVersion != nil && *req.ContentVersion != contentVersion {
+		fail(w, 409, "单词内容已更新，请刷新当前题目")
+		return
+	}
 	old := memoryState{}
-	e = tx.QueryRow("SELECT status,reinforce,due_at,repetitions,interval_days,ease FROM progress WHERE user_id=? AND word_id=?", u.ID, req.WordID).Scan(&old.status, &old.reinforce, &old.due, &old.repetitions, &old.interval, &old.ease)
+	var oldUpdatedAt string
+	e = tx.QueryRow("SELECT status,reinforce,due_at,repetitions,interval_days,ease,updated_at FROM progress WHERE user_id=? AND word_id=?", u.ID, req.WordID).Scan(&old.status, &old.reinforce, &old.due, &old.repetitions, &old.interval, &old.ease, &oldUpdatedAt)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		internal(w, e)
 		return
+	}
+	progressExisted := e == nil
+	var priorStage stageSnapshot
+	if req.Mode == "sprint" {
+		e = tx.QueryRow("SELECT stage,revision,updated_at FROM learn_progress WHERE user_id=? AND word_id=?", u.ID, req.WordID).Scan(&priorStage.Stage, &priorStage.Revision, &priorStage.UpdatedAt)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			internal(w, e)
+			return
+		}
+		priorStage.Exists = e == nil
 	}
 	if req.Mode == "sprint" && (req.Answer == "known" || req.Answer == "unsure-known") && (old.status == "mastered" || old.reinforce) {
 		fail(w, 409, "该单词已完成速刷，请刷新当前队列")
@@ -504,6 +527,25 @@ func (a *App) answer(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		internal(w, e)
 		return
+	}
+	if req.Mode == "sprint" {
+		answerID, err := result.LastInsertId()
+		if err != nil {
+			internal(w, err)
+			return
+		}
+		var revision int64
+		err = tx.QueryRow("SELECT COALESCE((SELECT revision FROM learn_progress WHERE user_id=? AND word_id=?),0)", u.ID, req.WordID).Scan(&revision)
+		if err != nil {
+			internal(w, err)
+			return
+		}
+		before, _ := json.Marshal(progressSnapshot{Exists: progressExisted, Status: old.status, Reinforce: old.reinforce, Due: old.due, Repetitions: old.repetitions, Interval: old.interval, Ease: old.ease, UpdatedAt: oldUpdatedAt, ContentVersion: contentVersion})
+		stage, _ := json.Marshal(priorStage)
+		if _, err = tx.Exec("INSERT INTO sprint_undo(answer_id,previous_progress,previous_stage,result_revision) VALUES(?,?,?,?)", answerID, string(before), string(stage), revision); err != nil {
+			internal(w, err)
+			return
+		}
 	}
 	if req.Mode == "learn" {
 		answerID, e := result.LastInsertId()
@@ -606,6 +648,126 @@ func (a *App) favorite(w http.ResponseWriter, r *http.Request) {
 		_, e = a.db.ExecContext(r.Context(), "DELETE FROM favorites WHERE user_id=? AND word_id=?", currentID(r), id)
 	}
 	if e != nil {
+		internal(w, e)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// Snapshots retain absence as well as values: undoing a first-ever sprint must
+// restore a genuinely unstarted word rather than manufacture progress history.
+type progressSnapshot struct {
+	Exists         bool
+	Status         string
+	Reinforce      bool
+	Due            string
+	Repetitions    int
+	Interval, Ease float64
+	UpdatedAt      string
+	ContentVersion int64
+}
+type stageSnapshot struct {
+	Exists    bool
+	Stage     int
+	Revision  int64
+	UpdatedAt string
+}
+
+// undoAnswer reverses only the caller's latest sprint event for this word within
+// two minutes. A revision check prevents undo from replacing subsequent practice.
+// The answer stays in history with an undone marker so retries remain identifiable.
+func (a *App) undoAnswer(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		EventID string `json:"eventId"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.EventID) < 8 || len(req.EventID) > 128 || strings.TrimSpace(req.EventID) != req.EventID {
+		fail(w, 400, "撤销记录编号无效")
+		return
+	}
+	u := userFrom(r)
+	tx, e := a.db.BeginTx(r.Context(), nil)
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	defer tx.Rollback()
+	var answerID, wordID, revision int64
+	var mode, created, progressJSON, stageJSON string
+	var undone bool
+	e = tx.QueryRow(`SELECT a.id,a.submitted_word_id,a.mode,a.created_at,a.undone,s.previous_progress,s.previous_stage,s.result_revision
+ FROM answers a JOIN sprint_undo s ON s.answer_id=a.id WHERE a.user_id=? AND a.event_id=?`, u.ID, req.EventID).Scan(&answerID, &wordID, &mode, &created, &undone, &progressJSON, &stageJSON, &revision)
+	if errors.Is(e, sql.ErrNoRows) {
+		fail(w, 404, "没有找到可以撤销的评分")
+		return
+	}
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	if undone {
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
+	}
+	at, e := time.Parse("2006-01-02T15:04:05.000Z", created)
+	if e != nil || mode != "sprint" || time.Since(at) > 2*time.Minute || time.Since(at) < -time.Second {
+		fail(w, 409, "已超过撤销时间，请在复习中重新判断")
+		return
+	}
+	var latest, currentRevision, currentContent int64
+	if e = tx.QueryRow("SELECT MAX(id) FROM answers WHERE user_id=? AND submitted_word_id=?", u.ID, wordID).Scan(&latest); e != nil {
+		internal(w, e)
+		return
+	}
+	if e = tx.QueryRow("SELECT COALESCE((SELECT revision FROM learn_progress WHERE user_id=? AND word_id=?),0)", u.ID, wordID).Scan(&currentRevision); e != nil {
+		internal(w, e)
+		return
+	}
+	var before progressSnapshot
+	var stage stageSnapshot
+	if json.Unmarshal([]byte(progressJSON), &before) != nil || json.Unmarshal([]byte(stageJSON), &stage) != nil {
+		fail(w, 500, "撤销记录损坏")
+		return
+	}
+	e = tx.QueryRow("SELECT content_version FROM words WHERE id=?", wordID).Scan(&currentContent)
+	if errors.Is(e, sql.ErrNoRows) {
+		fail(w, 409, "单词已删除，无法撤销")
+		return
+	}
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	if latest != answerID || currentRevision != revision || currentContent != before.ContentVersion {
+		fail(w, 409, "该单词已有后续练习或内容更新，无法撤销旧评分")
+		return
+	}
+	if before.Exists {
+		_, e = tx.Exec(`INSERT INTO progress(user_id,word_id,status,reinforce,due_at,repetitions,interval_days,ease,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,word_id) DO UPDATE SET status=excluded.status,reinforce=excluded.reinforce,due_at=excluded.due_at,repetitions=excluded.repetitions,interval_days=excluded.interval_days,ease=excluded.ease,updated_at=excluded.updated_at`, u.ID, wordID, before.Status, before.Reinforce, before.Due, before.Repetitions, before.Interval, before.Ease, before.UpdatedAt)
+	} else {
+		_, e = tx.Exec("DELETE FROM progress WHERE user_id=? AND word_id=?", u.ID, wordID)
+	}
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	// Never roll the revision backward; any page predating this correction is stale.
+	_, e = tx.Exec(`INSERT INTO learn_progress(user_id,word_id,stage,revision,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,word_id) DO UPDATE SET stage=excluded.stage,revision=excluded.revision,updated_at=excluded.updated_at`, u.ID, wordID, stage.Stage, currentRevision+1, stamp(time.Now()))
+	if e != nil {
+		internal(w, e)
+		return
+	}
+	if _, e = tx.Exec("UPDATE answers SET undone=1 WHERE id=?", answerID); e != nil {
+		internal(w, e)
+		return
+	}
+	if _, e = tx.Exec("UPDATE sprint_undo SET undone=1 WHERE answer_id=?", answerID); e != nil {
+		internal(w, e)
+		return
+	}
+	if e = tx.Commit(); e != nil {
 		internal(w, e)
 		return
 	}
