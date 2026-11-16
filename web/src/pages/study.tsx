@@ -273,6 +273,8 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit,
       await Promise.all(['study', 'books', 'favorites'].map(queryKey => client.cancelQueries({ queryKey: [queryKey] })))
       if (!mutation.isLatest()) return
       for (const queryKey of ['study', 'books', 'favorites']) client.setQueriesData({ queryKey: [queryKey] }, data => updateFavoriteCache(data, wordId, favorite))
+      // A newly mounted screen may have been awaiting its first snapshot when the old read was cancelled.
+      void client.refetchQueries({ type: 'active', predicate: query => ['study', 'books', 'favorites'].includes(String(query.queryKey[0])) && query.state.data === undefined })
       for (const queryKey of ['favorites', 'books', 'stats']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
       if (mounted.current) setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
     } finally {
