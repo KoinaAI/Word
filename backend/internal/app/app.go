@@ -241,7 +241,7 @@ func (a *App) Handler() http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, If-Match, X-Word-User-ID")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, If-Match, X-Word-User-ID, X-Word-Session-Renew")
 			w.Header().Set("Access-Control-Expose-Headers", "ETag, Allow, X-Word-User-ID")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(204)
@@ -333,33 +333,44 @@ func (a *App) sessionUser(r *http.Request) (*User, string, error) {
 	return &u, expires, nil
 }
 
-// renewSession gives active visitors a recoverable identity without writing on
-// every read. The original token remains valid; only its expiry is extended.
+// renewSession extends server-side activity without resending old credentials on
+// arbitrary API responses. Cookie refresh is reserved for an identity read that
+// browser clients serialize with login/logout across tabs using Web Locks.
 func (a *App) renewSession(w http.ResponseWriter, r *http.Request, expires string) error {
 	now := time.Now()
-	if expires > stamp(now.Add(7*24*time.Hour)) {
-		return nil
-	}
 	cookie, err := r.Cookie("word_session")
 	if err != nil {
 		return err
 	}
-	result, err := a.db.ExecContext(r.Context(), "UPDATE sessions SET expires_at=? WHERE token_hash=? AND expires_at=?", stamp(now.Add(30*24*time.Hour)), tokenHash(cookie.Value), expires)
-	if err != nil {
-		return err
+	if expires <= stamp(now.Add(7*24*time.Hour)) {
+		nextExpiry := stamp(now.Add(30 * 24 * time.Hour))
+		_, err = a.db.ExecContext(r.Context(), "UPDATE sessions SET expires_at=? WHERE token_hash=? AND expires_at=?", nextExpiry, tokenHash(cookie.Value), expires)
+		if err != nil {
+			return err
+		}
+		expires = nextExpiry
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count == 1 {
-		a.setSessionCookie(w, cookie.Value)
+	if r.Method == http.MethodGet && r.URL.Path == "/api/me" && r.Header.Get("X-Word-Session-Renew") == "1" {
+		expiresAt, parseErr := time.Parse("2006-01-02T15:04:05.000Z", expires)
+		if parseErr != nil {
+			return parseErr
+		}
+		// Plain reads can already have extended the server lifetime. Synchronize
+		// the browser expiry even if this particular read did not perform a write.
+		maxAge := int(time.Until(expiresAt).Seconds())
+		if maxAge > 0 {
+			a.setSessionCookieAge(w, cookie.Value, maxAge)
+		}
 	}
 	return nil
 }
 
 func (a *App) setSessionCookie(w http.ResponseWriter, raw string) {
-	http.SetCookie(w, &http.Cookie{Name: "word_session", Value: raw, Path: "/", HttpOnly: true, Secure: a.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+	a.setSessionCookieAge(w, raw, 30*24*60*60)
+}
+
+func (a *App) setSessionCookieAge(w http.ResponseWriter, raw string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{Name: "word_session", Value: raw, Path: "/", HttpOnly: true, Secure: a.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge})
 }
 
 func (a *App) getUser(ctx context.Context, id int64) (User, error) {

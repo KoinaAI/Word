@@ -62,3 +62,4 @@ CREATE TABLE IF NOT EXISTS sprint_undo (
  previous_progress TEXT NOT NULL, previous_stage TEXT NOT NULL, result_revision INTEGER NOT NULL,
  undone INTEGER NOT NULL DEFAULT 0 CHECK(undone IN(0,1))
 );
+CREATE INDEX IF NOT EXISTS answers_word_event ON answers(user_id,submitted_word_id,id);

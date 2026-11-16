@@ -62,29 +62,42 @@ func TestExpectedIdentityRejectsCrossTabWrites(t *testing.T) {
 	}
 }
 
-func TestActiveSessionRenewsSameTokenNearExpiry(t *testing.T) {
+func TestActiveSessionRenewsOnlyThroughCoordinatedIdentityRead(t *testing.T) {
 	a := testApp(t)
 	cookie, user := guestCookie(t, a)
 	before := stamp(time.Now().Add(2 * 24 * time.Hour))
 	if _, err := a.db.Exec("UPDATE sessions SET expires_at=? WHERE user_id=?", before, user.ID); err != nil {
 		t.Fatal(err)
 	}
-	rec := request(t, a, "GET", "/api/me", nil, cookie)
+	rec := request(t, a, "GET", "/api/stats", nil, cookie)
 	if rec.Code != 200 {
 		t.Fatal(rec.Body.String())
 	}
-	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Value != cookie.Value || cookies[0].MaxAge != 30*24*60*60 {
-		t.Fatalf("session cookie not renewed: %+v", cookies)
+	if len(rec.Result().Cookies()) != 0 {
+		t.Fatal("ordinary delayed response can overwrite a newly logged-in cookie")
 	}
 	var after string
 	a.db.QueryRow("SELECT expires_at FROM sessions WHERE user_id=?", user.ID).Scan(&after)
 	if after < stamp(time.Now().Add(29*24*time.Hour)) {
-		t.Fatalf("session expiry not extended: %s", after)
+		t.Fatalf("active server session was not extended: %s", after)
 	}
 	rec = request(t, a, "GET", "/api/me", nil, cookie)
 	if len(rec.Result().Cookies()) != 0 {
-		t.Fatal("healthy session rewrote cookie on every read")
+		t.Fatal("uncoordinated identity read resent old credentials")
+	}
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.Header.Set("X-Word-Session-Renew", "1")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Value != cookie.Value || cookies[0].MaxAge < 29*24*60*60 {
+		t.Fatalf("coordinated cookie expiry not synchronized: %+v", cookies)
+	}
+	var unchanged string
+	a.db.QueryRow("SELECT expires_at FROM sessions WHERE user_id=?", user.ID).Scan(&unchanged)
+	if unchanged != after {
+		t.Fatal("healthy identity read rewrote server expiry")
 	}
 }
 
