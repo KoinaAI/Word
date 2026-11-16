@@ -5,11 +5,12 @@ import { motion, useReducedMotion } from 'motion/react'
 import { ArrowLeft, ArrowRight, ArrowRotateLeft, BookOpen, Check, ChevronDown, ChevronUp, Star, Volume, Xmark } from '@gravity-ui/icons'
 import { Button, Card, Input, TextField } from '@heroui/react'
 import { Empty, Failure, IconButton, Loading, Progress } from '@/components/shared'
-import { ApiError, api, json, useUser } from '@/lib/api'
+import { ApiError, api, getSessionEpoch, json, useUser } from '@/lib/api'
+import { enqueueFavoriteMutation, readFavoriteIntent } from '@/lib/favorite-mutations'
 import { pronounce, stopPronunciation } from '@/lib/speech'
 import { completeStudyAnswer, createStudyEventId, createStudyRound, studyAnswer, summarizeStudyRound, undoStudyAnswer } from '@/lib/study-flow'
 import type { StudyDecision } from '@/lib/study-flow'
-import type { Answer, Book, Mode, Study, Word } from '@/lib/types'
+import type { Answer, Book, Mode, Study, User, Word } from '@/lib/types'
 import { advanceQuizRound, createQuizRound, isCorrectSpelling, quizProgress, recordQuizAnswer, summarizeQuizRound } from '@/lib/study-quiz'
 import type { QuizRound } from '@/lib/study-quiz'
 import { advanceLearnRound, createLearnRound, isLearnAnswerResponse, learnProgress, recordLearnAnswer, summarizeLearnRound } from '@/lib/learn-round'
@@ -118,13 +119,13 @@ function StudyLoader({ bookId, mode, userId }: { bookId: number; mode: Mode; use
   }
   return mode === 'sprint'
     ? <SprintSession key={generation} initialStudy={study.data} pendingKey={pendingKey} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
-    : <QuizSession key={generation} initialStudy={study.data} vocabulary={study.data.vocabulary || study.data.words} pendingKey={pendingKey} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
+    : <QuizSession key={generation} initialStudy={study.data} vocabulary={study.data.vocabulary || study.data.words} pendingKey={pendingKey} userId={userId} mode={mode} exit={exit} reload={reload} nextBatch={nextBatch} />
 }
 
 type QuizFeedback = { correct: boolean; selectedId?: number; spelling?: string }
 type QuizTransaction = { payload: Submission; questionKey: string; correct: boolean }
 
-function QuizSession({ initialStudy, vocabulary, pendingKey, mode, exit, reload, nextBatch }: { initialStudy: StudyBatch; vocabulary: Word[]; pendingKey: string; mode: Mode; exit: () => void; reload: () => void; nextBatch: () => void }) {
+function QuizSession({ initialStudy, vocabulary, pendingKey, userId, mode, exit, reload, nextBatch }: { initialStudy: StudyBatch; vocabulary: Word[]; pendingKey: string; userId: number; mode: Mode; exit: () => void; reload: () => void; nextBatch: () => void }) {
   const navigate = useNavigate()
   const client = useQueryClient()
   const reduceMotion = useReducedMotion()
@@ -251,18 +252,27 @@ function QuizSession({ initialStudy, vocabulary, pendingKey, mode, exit, reload,
   async function toggleFavorite(wordId: number) {
     // The same word can reappear in correction practice while its first request is pending.
     if (favoriteRequests.current.has(wordId)) return
-    const favorite = !favoriteIds.has(wordId)
+    const epoch = getSessionEpoch()
+    const favorite = !readFavoriteIntent(client, userId, wordId, epoch, favoriteIds.has(wordId))
+    const mutation = enqueueFavoriteMutation({
+      scope: client, userId, wordId, epoch, favorite,
+      isCurrent: () => getSessionEpoch() === epoch && client.getQueryData<User>(['me'])?.id === userId,
+      send: nextFavorite => api(`/favorites/${wordId}`, json('POST', { favorite: nextFavorite })),
+    })
     favoriteRequests.current.add(wordId)
     setPendingFavoriteIds(new Set(favoriteRequests.current))
     try {
-      await api(`/favorites/${wordId}`, json('POST', { favorite }))
-      if (!mounted.current) return
+      const result = await mutation.result
+      if (!mutation.isLatest() || result.cancelled) return
+      if (!result.saved) {
+        if (mounted.current) toast.error(result.error instanceof Error ? result.error.message : '收藏暂时没有保存成功')
+        return
+      }
       for (const queryKey of ['study', 'books', 'favorites']) client.setQueriesData({ queryKey: [queryKey] }, data => updateFavoriteCache(data, wordId, favorite))
       for (const queryKey of ['favorites', 'books', 'stats']) void client.invalidateQueries({ queryKey: [queryKey], refetchType: 'none' })
-      setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
-    } catch (error) {
-      if (mounted.current) toast.error(error instanceof Error ? error.message : '收藏暂时没有保存成功')
+      if (mounted.current) setFavoriteIds(current => { const next = new Set(current); if (favorite) next.add(wordId); else next.delete(wordId); return next })
     } finally {
+      mutation.release()
       favoriteRequests.current.delete(wordId)
       if (mounted.current) setPendingFavoriteIds(new Set(favoriteRequests.current))
     }
