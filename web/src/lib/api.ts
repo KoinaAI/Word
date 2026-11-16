@@ -22,6 +22,8 @@ let sessionSnapshot: SessionSnapshot = { epoch: 0, checking: false }
 let lastMessage = ''
 let authChannel: BroadcastChannel | undefined
 
+/** Tag deferred writes so switching away and back cannot revive an old operation. */
+export function getSessionEpoch() { return sessionSnapshot.epoch }
 function emitSession() { for (const listener of sessionListeners) listener() }
 function advanceSession(checking: boolean) {
   sessionSnapshot = { epoch: sessionSnapshot.epoch + 1, checking }
